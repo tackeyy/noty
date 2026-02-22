@@ -83,6 +83,18 @@ export function createMockNotionClient() {
       delete: vi.fn().mockResolvedValue({}),
     },
     databases: {
+      retrieve: vi.fn().mockResolvedValue({
+        id: "db-id-1",
+        object: "database",
+        url: "https://notion.so/DB-1",
+        created_time: "2026-01-01T00:00:00.000Z",
+        last_edited_time: "2026-01-02T00:00:00.000Z",
+        title: [{ plain_text: "Test Database" }],
+        properties: {
+          Name: { id: "title", name: "Name", type: "title", title: {} },
+          Status: { id: "status", name: "Status", type: "select", select: { options: [] } },
+        },
+      }),
       query: vi.fn().mockResolvedValue({
         results: [
           {

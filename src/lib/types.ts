@@ -19,8 +19,14 @@ export interface PageResult {
   properties: Record<string, unknown>;
 }
 
+export interface SearchSort {
+  direction: "ascending" | "descending";
+  timestamp: "last_edited_time";
+}
+
 export interface CreatePageArgs {
   parentId: string;
+  parentType?: "page_id" | "database_id";
   title: string;
   properties?: Record<string, unknown>;
   content?: string;
@@ -58,6 +64,15 @@ export interface NotionUser {
   type: "person" | "bot";
   email?: string;
   avatarUrl?: string;
+}
+
+export interface DatabaseResult {
+  id: string;
+  title: string;
+  url: string;
+  createdTime: string;
+  lastEditedTime: string;
+  properties: Record<string, unknown>;
 }
 
 export interface AuthInfo {

@@ -2,7 +2,9 @@ export { NotyClient } from "./client.js";
 export type {
   NotyClientOptions,
   SearchResult,
+  SearchSort,
   PageResult,
+  DatabaseResult,
   CreatePageArgs,
   UpdatePageArgs,
   QueryDatabaseArgs,

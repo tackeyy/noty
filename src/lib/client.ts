@@ -6,7 +6,9 @@ import { buildProperties } from "./property-builder.js";
 import type {
   NotyClientOptions,
   SearchResult,
+  SearchSort,
   PageResult,
+  DatabaseResult,
   CreatePageArgs,
   UpdatePageArgs,
   QueryDatabaseArgs,
@@ -52,7 +54,7 @@ export class NotyClient {
 
   async search(
     query: string,
-    opts?: { filter?: "page" | "database"; limit?: number },
+    opts?: { filter?: "page" | "database"; limit?: number; sort?: SearchSort },
   ): Promise<SearchResult[]> {
     const params: Record<string, unknown> = {
       query,
@@ -60,6 +62,9 @@ export class NotyClient {
     };
     if (opts?.filter) {
       params.filter = { property: "object", value: opts.filter };
+    }
+    if (opts?.sort) {
+      params.sort = opts.sort;
     }
 
     const res = await this.client.search(params as any);
@@ -120,7 +125,7 @@ export class NotyClient {
   }
 
   async createPage(args: CreatePageArgs): Promise<PageResult> {
-    const pageId = extractNotionId(args.parentId);
+    const parentId = extractNotionId(args.parentId);
 
     // Build properties
     const properties = args.properties
@@ -134,8 +139,10 @@ export class NotyClient {
       };
     }
 
+    // Determine parent type
+    const parentType = args.parentType || "page_id";
     const createArgs: Record<string, unknown> = {
-      parent: { page_id: pageId },
+      parent: { [parentType]: parentId },
       properties,
     };
 
@@ -191,6 +198,27 @@ export class NotyClient {
     // Retrieve updated page
     const page = await this.client.pages.retrieve({ page_id: pageId });
     return pageToResult(page as any);
+  }
+
+  async getDatabase(idOrUrl: string): Promise<DatabaseResult> {
+    const dbId = extractNotionId(idOrUrl);
+    const db = (await this.client.databases.retrieve({
+      database_id: dbId,
+    })) as any;
+
+    // Extract title from database title array
+    const title = (db.title || [])
+      .map((t: any) => t.plain_text || "")
+      .join("");
+
+    return {
+      id: db.id,
+      title,
+      url: db.url || "",
+      createdTime: db.created_time || "",
+      lastEditedTime: db.last_edited_time || "",
+      properties: db.properties || {},
+    };
   }
 
   async queryDatabase(

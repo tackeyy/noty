@@ -45,6 +45,18 @@ describe("NotyClient", () => {
         }),
       );
     });
+
+    it("passes sort option", async () => {
+      await client.search("test", {
+        sort: { direction: "descending", timestamp: "last_edited_time" },
+      });
+      expect(mockClient.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: "test",
+          sort: { direction: "descending", timestamp: "last_edited_time" },
+        }),
+      );
+    });
   });
 
   describe("getPage", () => {
@@ -83,6 +95,25 @@ describe("NotyClient", () => {
       expect(callArgs.children).toBeDefined();
       expect(callArgs.children.length).toBeGreaterThan(0);
     });
+
+    it("creates a page with database_id parent", async () => {
+      await client.createPage({
+        parentId: "db-parent-id",
+        parentType: "database_id",
+        title: "DB Page",
+      });
+      const callArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(callArgs.parent).toEqual({ database_id: "db-parent-id" });
+    });
+
+    it("defaults to page_id parent when parentType is not specified", async () => {
+      await client.createPage({
+        parentId: "page-parent-id",
+        title: "Page Child",
+      });
+      const callArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(callArgs.parent).toEqual({ page_id: "page-parent-id" });
+    });
   });
 
   describe("updatePage", () => {
@@ -99,6 +130,19 @@ describe("NotyClient", () => {
       });
       expect(mockClient.blocks.delete).toHaveBeenCalled();
       expect(mockClient.blocks.children.append).toHaveBeenCalled();
+    });
+  });
+
+  describe("getDatabase", () => {
+    it("returns database metadata", async () => {
+      const result = await client.getDatabase("db-id-1");
+      expect(result.id).toBe("db-id-1");
+      expect(result.title).toBe("Test Database");
+      expect(result.properties).toHaveProperty("Name");
+      expect(result.properties).toHaveProperty("Status");
+      expect(mockClient.databases.retrieve).toHaveBeenCalledWith({
+        database_id: "db-id-1",
+      });
     });
   });
 
