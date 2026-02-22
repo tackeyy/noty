@@ -21,10 +21,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.1",
     "@notionhq/client": "^2.2.15",
-    "commander": "^13.1.0",
-    "zod": "^3.25.0"
+    "commander": "^13.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",

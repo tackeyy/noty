@@ -329,20 +329,4 @@ users
     }
   });
 
-// --- mcp ---
-program
-  .command("mcp")
-  .description("Start MCP server (stdio)")
-  .action(async () => {
-    const { createNotyMcpServer } = await import("../mcp/server.js");
-    const { StdioServerTransport } = await import(
-      "@modelcontextprotocol/sdk/server/stdio.js"
-    );
-
-    const client = createClient();
-    const mcpServer = createNotyMcpServer(client);
-    const transport = new StdioServerTransport();
-    await mcpServer.connect(transport);
-  });
-
 program.parse();

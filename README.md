@@ -1,12 +1,11 @@
 # noty
 
-Notion CLI tool, library, and MCP server for TypeScript.
+Notion CLI tool and library for TypeScript.
 
 ## Features
 
 - **CLI** — Search, read, create, and update Notion pages from the terminal
 - **Library** — Import `NotyClient` for programmatic access to Notion
-- **MCP Server** — Expose Notion operations as Model Context Protocol tools for AI agents
 - **Markdown I/O** — Read pages as Markdown, write Markdown that becomes Notion blocks
 - **Three output formats** — Human-readable, JSON, and TSV (plain)
 
@@ -53,7 +52,6 @@ noty databases query <id> [--filter <json>] [--sorts <json>]
 noty comments list <page_id>           # List page comments
 noty comments add <page_id> --body <text>
 noty users list                        # List workspace users
-noty mcp                               # Start MCP server (stdio)
 ```
 
 ### Output Formats
@@ -89,53 +87,6 @@ const rows = await client.queryDatabase("db-id", {
   filter: { property: "Status", select: { equals: "Done" } },
 });
 ```
-
-## MCP Server
-
-### Claude Code
-
-Add to your Claude Code settings (`.claude/settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "notion": {
-      "command": "npx",
-      "args": ["noty", "mcp"],
-      "env": { "NOTION_TOKEN": "ntn_..." }
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "notion": {
-      "command": "npx",
-      "args": ["noty", "mcp"],
-      "env": { "NOTION_TOKEN": "ntn_..." }
-    }
-  }
-}
-```
-
-### Available MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `notion-search` | Search pages and databases |
-| `notion-fetch` | Fetch page content as Markdown |
-| `notion-create-pages` | Create pages |
-| `notion-update-page` | Update page properties and content |
-| `notion-get-comments` | List page comments |
-| `notion-create-comment` | Add a comment |
-| `notion-get-users` | List workspace users |
-| `notion-get-teams` | List workspace teams |
 
 ## License
 
