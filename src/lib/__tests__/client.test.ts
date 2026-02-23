@@ -151,6 +151,99 @@ describe("NotyClient", () => {
     });
   });
 
+  describe("updatePage - pagination and chunking", () => {
+    it("paginates block deletion when page has more than 100 blocks", async () => {
+      const page1Blocks = Array.from({ length: 100 }, (_, i) => ({
+        id: `block-${i}`,
+        type: "paragraph",
+        has_children: false,
+        paragraph: { rich_text: [{ plain_text: `Block ${i}` }] },
+      }));
+      const page2Blocks = Array.from({ length: 50 }, (_, i) => ({
+        id: `block-${100 + i}`,
+        type: "paragraph",
+        has_children: false,
+        paragraph: { rich_text: [{ plain_text: `Block ${100 + i}` }] },
+      }));
+
+      mockClient.blocks.children.list
+        .mockResolvedValueOnce({
+          results: page1Blocks,
+          has_more: true,
+          next_cursor: "cursor-page-2",
+        })
+        .mockResolvedValueOnce({
+          results: page2Blocks,
+          has_more: false,
+          next_cursor: null,
+        });
+
+      await client.updatePage("page-id-1", { content: "New content" });
+
+      // Should have called list twice for pagination
+      expect(mockClient.blocks.children.list).toHaveBeenCalledTimes(2);
+      // Should have deleted all 150 blocks
+      expect(mockClient.blocks.delete).toHaveBeenCalledTimes(150);
+    });
+
+    it("chunks block appending when content generates more than 100 blocks", async () => {
+      // Reset list to return empty (no existing blocks to delete)
+      mockClient.blocks.children.list.mockResolvedValueOnce({
+        results: [],
+        has_more: false,
+        next_cursor: null,
+      });
+
+      // Generate content with many blocks (each line becomes a paragraph block)
+      const lines = Array.from({ length: 150 }, (_, i) => `Line ${i}`);
+      const content = lines.join("\n\n");
+
+      await client.updatePage("page-id-1", { content });
+
+      // Should have called append at least twice (150 blocks / 100 per chunk)
+      expect(mockClient.blocks.children.append.mock.calls.length).toBeGreaterThanOrEqual(2);
+      // First chunk should have at most 100 children
+      expect(mockClient.blocks.children.append.mock.calls[0][0].children.length).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe("clearPage", () => {
+    it("deletes all blocks from a page", async () => {
+      const result = await client.clearPage("page-id-1");
+      expect(mockClient.blocks.children.list).toHaveBeenCalled();
+      expect(mockClient.blocks.delete).toHaveBeenCalledWith({ block_id: "block-1" });
+      expect(result.id).toBe("page-id-1");
+    });
+
+    it("paginates when clearing a page with more than 100 blocks", async () => {
+      const page1Blocks = Array.from({ length: 100 }, (_, i) => ({
+        id: `block-${i}`,
+        type: "paragraph",
+      }));
+      const page2Blocks = Array.from({ length: 30 }, (_, i) => ({
+        id: `block-${100 + i}`,
+        type: "paragraph",
+      }));
+
+      mockClient.blocks.children.list
+        .mockResolvedValueOnce({
+          results: page1Blocks,
+          has_more: true,
+          next_cursor: "cursor-2",
+        })
+        .mockResolvedValueOnce({
+          results: page2Blocks,
+          has_more: false,
+          next_cursor: null,
+        });
+
+      await client.clearPage("page-id-1");
+
+      expect(mockClient.blocks.children.list).toHaveBeenCalledTimes(2);
+      expect(mockClient.blocks.delete).toHaveBeenCalledTimes(130);
+    });
+  });
+
   describe("getDatabase", () => {
     it("returns database metadata", async () => {
       const result = await client.getDatabase("db-id-1");

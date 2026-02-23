@@ -188,32 +188,76 @@ export class NotyClient {
       const mode = args.mode ?? "replace";
 
       if (mode === "replace") {
-        // Get existing blocks
-        const existing = await withRetry(() =>
-          this.client.blocks.children.list({
-            block_id: pageId,
-            page_size: 100,
-          }),
-        );
+        // Get all existing blocks with pagination
+        const allBlocks: any[] = [];
+        let cursor: string | undefined;
+        do {
+          const res = await withRetry(() =>
+            this.client.blocks.children.list({
+              block_id: pageId,
+              page_size: 100,
+              start_cursor: cursor,
+            }),
+          );
+          allBlocks.push(...res.results);
+          cursor = res.has_more
+            ? (res.next_cursor ?? undefined)
+            : undefined;
+        } while (cursor);
 
-        // Delete existing blocks
-        for (const block of existing.results) {
+        // Delete all existing blocks
+        for (const block of allBlocks) {
           await withRetry(() =>
             this.client.blocks.delete({ block_id: (block as any).id }),
           );
         }
       }
 
-      // Append new blocks
+      // Append new blocks (chunked to stay within API limit of 100)
       const newBlocks = markdownToBlocks(args.content);
-      if (newBlocks.length > 0) {
+      for (let i = 0; i < newBlocks.length; i += 100) {
+        const chunk = newBlocks.slice(i, i + 100);
         await withRetry(() =>
           this.client.blocks.children.append({
             block_id: pageId,
-            children: newBlocks as any,
+            children: chunk as any,
           }),
         );
       }
+    }
+
+    // Retrieve updated page
+    const page = await withRetry(() =>
+      this.client.pages.retrieve({ page_id: pageId }),
+    );
+    return pageToResult(page as any);
+  }
+
+  async clearPage(idOrUrl: string): Promise<PageResult> {
+    const pageId = extractNotionId(idOrUrl);
+
+    // Get all existing blocks with pagination
+    const allBlocks: any[] = [];
+    let cursor: string | undefined;
+    do {
+      const res = await withRetry(() =>
+        this.client.blocks.children.list({
+          block_id: pageId,
+          page_size: 100,
+          start_cursor: cursor,
+        }),
+      );
+      allBlocks.push(...res.results);
+      cursor = res.has_more
+        ? (res.next_cursor ?? undefined)
+        : undefined;
+    } while (cursor);
+
+    // Delete all blocks
+    for (const block of allBlocks) {
+      await withRetry(() =>
+        this.client.blocks.delete({ block_id: (block as any).id }),
+      );
     }
 
     // Retrieve updated page

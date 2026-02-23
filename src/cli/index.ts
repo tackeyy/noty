@@ -217,6 +217,31 @@ pages
     }
   });
 
+pages
+  .command("clear <id>")
+  .description("Delete all content blocks from a page")
+  .action(async (id) => {
+    try {
+      const client = createClient();
+      const mode = getOutputMode();
+
+      const result = await client.clearPage(id);
+
+      if (mode === "json") {
+        jsonOutput(result);
+      } else if (mode === "plain") {
+        console.log(`${result.id}\t${result.title}\t${result.url}`);
+      } else {
+        console.log(`Page cleared: ${result.title}`);
+        console.log(`  ID: ${result.id}`);
+        console.log(`  URL: ${result.url}`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
 // --- databases ---
 const databases = program
   .command("databases")
