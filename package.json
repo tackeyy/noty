@@ -1,6 +1,6 @@
 {
   "name": "noty",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Notion CLI tool and library for TypeScript",
   "type": "module",
   "main": "dist/lib/index.js",

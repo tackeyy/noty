@@ -124,11 +124,29 @@ describe("NotyClient", () => {
       expect(mockClient.pages.update).toHaveBeenCalled();
     });
 
-    it("replaces content", async () => {
+    it("replaces content by default", async () => {
       await client.updatePage("page-id-1", {
         content: "New content",
       });
       expect(mockClient.blocks.delete).toHaveBeenCalled();
+      expect(mockClient.blocks.children.append).toHaveBeenCalled();
+    });
+
+    it("replaces content when mode is replace", async () => {
+      await client.updatePage("page-id-1", {
+        content: "New content",
+        mode: "replace",
+      });
+      expect(mockClient.blocks.delete).toHaveBeenCalled();
+      expect(mockClient.blocks.children.append).toHaveBeenCalled();
+    });
+
+    it("appends content without deleting existing blocks when mode is append", async () => {
+      await client.updatePage("page-id-1", {
+        content: "Appended content",
+        mode: "append",
+      });
+      expect(mockClient.blocks.delete).not.toHaveBeenCalled();
       expect(mockClient.blocks.children.append).toHaveBeenCalled();
     });
   });

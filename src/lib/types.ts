@@ -27,7 +27,7 @@ export interface SearchSort {
 export interface CreatePageArgs {
   parentId: string;
   parentType?: "page_id" | "database_id";
-  title: string;
+  title?: string;
   properties?: Record<string, unknown>;
   content?: string;
 }
@@ -35,6 +35,7 @@ export interface CreatePageArgs {
 export interface UpdatePageArgs {
   properties?: Record<string, unknown>;
   content?: string;
+  mode?: "replace" | "append";
 }
 
 export interface QueryDatabaseArgs {

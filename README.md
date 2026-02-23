@@ -8,6 +8,8 @@ Notion CLI tool and library for TypeScript.
 - **Library** — Import `NotyClient` for programmatic access to Notion
 - **Markdown I/O** — Read pages as Markdown, write Markdown that becomes Notion blocks
 - **Three output formats** — Human-readable, JSON, and TSV (plain)
+- **stdin support** — Pipe content via `--content -`, `--properties -`, `--body -`
+- **Retry with backoff** — Automatic retry on 429/5xx with exponential backoff
 
 ## Installation
 
@@ -45,12 +47,28 @@ export NOTION_TOKEN="ntn_..."
 ```
 noty auth test                         # Test authentication
 noty search <query>                    # Search pages and databases
+  --filter <type>                      #   Filter by type (page or database)
+  --limit <n>                          #   Maximum results (default: 10)
+  --sort <direction>                   #   Sort by last_edited_time (ascending or descending)
 noty pages get <id>                    # Get page content as Markdown
-noty pages create --parent <id> --title <t> [--content <md>] [--properties <json>]
-noty pages update <id> [--title <t>] [--content <md>] [--properties <json>]
-noty databases query <id> [--filter <json>] [--sorts <json>]
+noty pages create                      # Create a new page
+  --parent <id>                        #   Parent page or database ID (required)
+  --title <title>                      #   Page title
+  --content <md>                       #   Content as Markdown (use '-' for stdin)
+  --properties <json>                  #   Properties as JSON (use '-' for stdin)
+noty pages update <id>                 # Update a page
+  --title <title>                      #   New page title
+  --content <md>                       #   New content as Markdown (use '-' for stdin)
+  --properties <json>                  #   Properties as JSON (use '-' for stdin)
+  --append                             #   Append content instead of replacing
+noty databases get <id>                # Get database schema and metadata
+noty databases query <id>              # Query a database
+  --filter <json>                      #   Filter as JSON string
+  --sorts <json>                       #   Sorts as JSON string
+  --limit <n>                          #   Maximum results (default: 100)
 noty comments list <page_id>           # List page comments
-noty comments add <page_id> --body <text>
+noty comments add <page_id>            # Add a comment to a page
+  --body <text>                        #   Comment text (use '-' for stdin)
 noty users list                        # List workspace users
 ```
 
@@ -62,6 +80,26 @@ noty users list                        # List workspace users
 | `--json` | JSON | Piping to jq, scripts |
 | `--plain` | TSV | Unix pipelines, awk/cut |
 
+### stdin Examples
+
+Pipe long Markdown content:
+
+```bash
+cat meeting-notes.md | noty pages create --parent <id> --title "Meeting Notes" --content -
+```
+
+Pipe JSON properties:
+
+```bash
+echo '{"名前":{"title":[{"text":{"content":"New Entry"}}]}}' | noty pages create --parent <db-id> --properties -
+```
+
+Append content to existing page:
+
+```bash
+echo "## New Section\n\nAppended content" | noty pages update <page-id> --content - --append
+```
+
 ## Library Usage
 
 ```typescript
@@ -71,6 +109,11 @@ const client = new NotyClient({ token: process.env.NOTION_TOKEN! });
 
 // Search
 const results = await client.search("meeting notes");
+
+// Search with sort
+const sorted = await client.search("notes", {
+  sort: { direction: "descending", timestamp: "last_edited_time" },
+});
 
 // Read a page as Markdown
 const markdown = await client.getPage("page-id-or-url");
@@ -82,9 +125,32 @@ const page = await client.createPage({
   content: "# Hello\n\nWorld",
 });
 
+// Update a page (append mode)
+await client.updatePage("page-id", {
+  content: "## New Section",
+  mode: "append",
+});
+
+// Get database schema
+const db = await client.getDatabase("db-id");
+
 // Query a database
 const rows = await client.queryDatabase("db-id", {
   filter: { property: "Status", select: { equals: "Done" } },
+});
+```
+
+### Retry
+
+All API calls automatically retry on 429 (rate limit) and 5xx (server error) with exponential backoff. You can also use `withRetry` directly:
+
+```typescript
+import { withRetry } from "noty";
+
+const result = await withRetry(() => someApiCall(), {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 30000,
 });
 ```
 

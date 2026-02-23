@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { NotyClient } from "../lib/client.js";
+import { readStdin } from "./stdin.js";
 
 const program = new Command();
 
 program
   .name("noty")
   .description("Notion CLI tool")
-  .version("1.0.0")
+  .version("1.1.0")
   .option("--json", "Output in JSON format")
   .option("--plain", "Output in TSV format");
 
@@ -63,13 +64,18 @@ program
   .description("Search Notion pages and databases")
   .option("--filter <type>", "Filter by type (page or database)")
   .option("--limit <n>", "Maximum results", "10")
+  .option("--sort <direction>", "Sort by last_edited_time (ascending or descending)")
   .action(async (query, opts) => {
     try {
       const client = createClient();
       const mode = getOutputMode();
+      const sort = opts.sort
+        ? { direction: opts.sort as "ascending" | "descending", timestamp: "last_edited_time" as const }
+        : undefined;
       const results = await client.search(query, {
         filter: opts.filter,
         limit: parseInt(opts.limit, 10),
+        sort,
       });
 
       if (mode === "json") {
@@ -125,22 +131,30 @@ pages
   .command("create")
   .description("Create a new page")
   .requiredOption("--parent <id>", "Parent page or database ID")
-  .requiredOption("--title <title>", "Page title")
-  .option("--content <markdown>", "Page content as Markdown")
-  .option("--properties <json>", "Properties as JSON string")
+  .option("--title <title>", "Page title")
+  .option("--content <markdown>", "Page content as Markdown (use '-' to read from stdin)")
+  .option("--properties <json>", "Properties as JSON string (use '-' to read from stdin)")
   .action(async (opts) => {
     try {
+      if (!opts.title && !opts.properties) {
+        console.error("Error: --title or --properties is required");
+        process.exit(1);
+      }
+
       const client = createClient();
       const mode = getOutputMode();
 
-      const properties = opts.properties
-        ? JSON.parse(opts.properties)
-        : undefined;
+      let content = opts.content;
+      if (content === "-") content = await readStdin();
+
+      let properties = opts.properties;
+      if (properties === "-") properties = await readStdin();
+      properties = properties ? JSON.parse(properties) : undefined;
 
       const result = await client.createPage({
         parentId: opts.parent,
         title: opts.title,
-        content: opts.content,
+        content,
         properties,
       });
 
@@ -163,22 +177,29 @@ pages
   .command("update <id>")
   .description("Update a page")
   .option("--title <title>", "New page title")
-  .option("--content <markdown>", "New page content as Markdown")
-  .option("--properties <json>", "Properties as JSON string")
+  .option("--content <markdown>", "New page content as Markdown (use '-' to read from stdin)")
+  .option("--properties <json>", "Properties as JSON string (use '-' to read from stdin)")
+  .option("--append", "Append content instead of replacing")
   .action(async (id, opts) => {
     try {
       const client = createClient();
       const mode = getOutputMode();
 
-      const properties = opts.properties
-        ? JSON.parse(opts.properties)
+      let content = opts.content;
+      if (content === "-") content = await readStdin();
+
+      let properties = opts.properties;
+      if (properties === "-") properties = await readStdin();
+      properties = properties
+        ? JSON.parse(properties)
         : opts.title
           ? { Name: opts.title }
           : undefined;
 
       const result = await client.updatePage(id, {
         properties,
-        content: opts.content,
+        content,
+        mode: opts.append ? "append" : "replace",
       });
 
       if (mode === "json") {
@@ -200,6 +221,37 @@ pages
 const databases = program
   .command("databases")
   .description("Database operations");
+
+databases
+  .command("get <id>")
+  .description("Get database schema and metadata")
+  .action(async (id) => {
+    try {
+      const client = createClient();
+      const mode = getOutputMode();
+      const result = await client.getDatabase(id);
+
+      if (mode === "json") {
+        jsonOutput(result);
+      } else if (mode === "plain") {
+        console.log(`${result.id}\t${result.title}\t${result.url}`);
+      } else {
+        console.log(`${result.title}`);
+        console.log(`  ID: ${result.id}`);
+        console.log(`  URL: ${result.url}`);
+        console.log(`  Created: ${result.createdTime}`);
+        console.log(`  Last edited: ${result.lastEditedTime}`);
+        console.log(`  Properties:`);
+        for (const [name, prop] of Object.entries(result.properties)) {
+          const p = prop as Record<string, unknown>;
+          console.log(`    - ${name} (${p.type})`);
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
 
 databases
   .command("query <id>")
@@ -276,12 +328,16 @@ comments
 comments
   .command("add <page_id>")
   .description("Add a comment to a page")
-  .requiredOption("--body <text>", "Comment text")
+  .requiredOption("--body <text>", "Comment text (use '-' to read from stdin)")
   .action(async (pageId, opts) => {
     try {
       const client = createClient();
       const mode = getOutputMode();
-      const result = await client.createComment(pageId, opts.body);
+
+      let body = opts.body;
+      if (body === "-") body = await readStdin();
+
+      const result = await client.createComment(pageId, body);
 
       if (mode === "json") {
         jsonOutput(result);

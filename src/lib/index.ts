@@ -16,3 +16,5 @@ export type {
 export { blocksToMarkdown } from "./blocks-to-markdown.js";
 export { markdownToBlocks } from "./markdown-to-blocks.js";
 export { extractNotionId, toUuid } from "./url-parser.js";
+export { withRetry } from "./retry.js";
+export type { RetryOptions } from "./retry.js";

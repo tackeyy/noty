@@ -3,6 +3,7 @@ import { extractNotionId } from "./url-parser.js";
 import { blocksToMarkdown } from "./blocks-to-markdown.js";
 import { markdownToBlocks } from "./markdown-to-blocks.js";
 import { buildProperties } from "./property-builder.js";
+import { withRetry } from "./retry.js";
 import type {
   NotyClientOptions,
   SearchResult,
@@ -67,7 +68,7 @@ export class NotyClient {
       params.sort = opts.sort;
     }
 
-    const res = await this.client.search(params as any);
+    const res = await withRetry(() => this.client.search(params as any));
 
     return res.results.map((item: any) => ({
       id: item.id,
@@ -86,11 +87,13 @@ export class NotyClient {
     let cursor: string | undefined;
 
     do {
-      const res = await this.client.blocks.children.list({
-        block_id: pageId,
-        page_size: 100,
-        start_cursor: cursor,
-      });
+      const res = await withRetry(() =>
+        this.client.blocks.children.list({
+          block_id: pageId,
+          page_size: 100,
+          start_cursor: cursor,
+        }),
+      );
       blocks.push(...res.results);
       cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
     } while (cursor);
@@ -101,11 +104,13 @@ export class NotyClient {
         const childBlocks: any[] = [];
         let childCursor: string | undefined;
         do {
-          const res = await this.client.blocks.children.list({
-            block_id: blockId,
-            page_size: 100,
-            start_cursor: childCursor,
-          });
+          const res = await withRetry(() =>
+            this.client.blocks.children.list({
+              block_id: blockId,
+              page_size: 100,
+              start_cursor: childCursor,
+            }),
+          );
           childBlocks.push(...res.results);
           childCursor = res.has_more
             ? (res.next_cursor ?? undefined)
@@ -120,7 +125,9 @@ export class NotyClient {
 
   async getPageMetadata(idOrUrl: string): Promise<PageResult> {
     const pageId = extractNotionId(idOrUrl);
-    const page = await this.client.pages.retrieve({ page_id: pageId });
+    const page = await withRetry(() =>
+      this.client.pages.retrieve({ page_id: pageId }),
+    );
     return pageToResult(page as any);
   }
 
@@ -151,7 +158,9 @@ export class NotyClient {
       createArgs.children = markdownToBlocks(args.content);
     }
 
-    const page = await this.client.pages.create(createArgs as any);
+    const page = await withRetry(() =>
+      this.client.pages.create(createArgs as any),
+    );
     return pageToResult(page as any);
   }
 
@@ -166,45 +175,61 @@ export class NotyClient {
       const properties = buildProperties(
         args.properties as Record<string, unknown>,
       );
-      await this.client.pages.update({
-        page_id: pageId,
-        properties: properties as any,
-      });
+      await withRetry(() =>
+        this.client.pages.update({
+          page_id: pageId,
+          properties: properties as any,
+        }),
+      );
     }
 
-    // Update content if provided (archive existing blocks + append new ones)
+    // Update content if provided
     if (args.content) {
-      // Get existing blocks
-      const existing = await this.client.blocks.children.list({
-        block_id: pageId,
-        page_size: 100,
-      });
+      const mode = args.mode ?? "replace";
 
-      // Delete existing blocks
-      for (const block of existing.results) {
-        await this.client.blocks.delete({ block_id: (block as any).id });
+      if (mode === "replace") {
+        // Get existing blocks
+        const existing = await withRetry(() =>
+          this.client.blocks.children.list({
+            block_id: pageId,
+            page_size: 100,
+          }),
+        );
+
+        // Delete existing blocks
+        for (const block of existing.results) {
+          await withRetry(() =>
+            this.client.blocks.delete({ block_id: (block as any).id }),
+          );
+        }
       }
 
       // Append new blocks
       const newBlocks = markdownToBlocks(args.content);
       if (newBlocks.length > 0) {
-        await this.client.blocks.children.append({
-          block_id: pageId,
-          children: newBlocks as any,
-        });
+        await withRetry(() =>
+          this.client.blocks.children.append({
+            block_id: pageId,
+            children: newBlocks as any,
+          }),
+        );
       }
     }
 
     // Retrieve updated page
-    const page = await this.client.pages.retrieve({ page_id: pageId });
+    const page = await withRetry(() =>
+      this.client.pages.retrieve({ page_id: pageId }),
+    );
     return pageToResult(page as any);
   }
 
   async getDatabase(idOrUrl: string): Promise<DatabaseResult> {
     const dbId = extractNotionId(idOrUrl);
-    const db = (await this.client.databases.retrieve({
-      database_id: dbId,
-    })) as any;
+    const db = (await withRetry(() =>
+      this.client.databases.retrieve({
+        database_id: dbId,
+      }),
+    )) as any;
 
     // Extract title from database title array
     const title = (db.title || [])
@@ -235,7 +260,9 @@ export class NotyClient {
     if (opts?.sorts) params.sorts = opts.sorts;
     if (opts?.startCursor) params.start_cursor = opts.startCursor;
 
-    const res = await this.client.databases.query(params as any);
+    const res = await withRetry(() =>
+      this.client.databases.query(params as any),
+    );
 
     return {
       results: res.results.map((page: any) => pageToResult(page)),
@@ -258,7 +285,9 @@ export class NotyClient {
       };
       if (cursor) params.start_cursor = cursor;
 
-      const res = await this.client.comments.list(params as any);
+      const res = await withRetry(() =>
+        this.client.comments.list(params as any),
+      );
 
       for (const comment of res.results as any[]) {
         comments.push({
@@ -287,10 +316,12 @@ export class NotyClient {
   ): Promise<NotionComment> {
     const pageId = extractNotionId(pageIdOrUrl);
 
-    const res = (await this.client.comments.create({
-      parent: { page_id: pageId },
-      rich_text: [{ type: "text" as const, text: { content: body } }],
-    })) as any;
+    const res = (await withRetry(() =>
+      this.client.comments.create({
+        parent: { page_id: pageId },
+        rich_text: [{ type: "text" as const, text: { content: body } }],
+      }),
+    )) as any;
 
     return {
       id: res.id,
@@ -314,7 +345,9 @@ export class NotyClient {
       const params: Record<string, unknown> = { page_size: 100 };
       if (cursor) params.start_cursor = cursor;
 
-      const res = await this.client.users.list(params as any);
+      const res = await withRetry(() =>
+        this.client.users.list(params as any),
+      );
 
       for (const user of res.results as any[]) {
         users.push({
@@ -333,7 +366,9 @@ export class NotyClient {
   }
 
   async authTest(): Promise<AuthInfo> {
-    const res = (await this.client.users.me({})) as any;
+    const res = (await withRetry(() =>
+      this.client.users.me({}),
+    )) as any;
     return {
       botId: res.id || "",
       workspaceName: res.bot?.workspace_name || "",
