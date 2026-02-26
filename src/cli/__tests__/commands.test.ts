@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { createProgram } from "../index.js";
 import type { NotyClient } from "../../lib/client.js";
 
@@ -126,7 +126,7 @@ describe("CLI commands", () => {
   let mockClient: NotyClient;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  let processExitSpy: MockInstance;
 
   beforeEach(() => {
     mockClient = createMockClient();
