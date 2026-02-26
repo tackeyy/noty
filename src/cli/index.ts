@@ -255,6 +255,31 @@ export function createProgram(injectedClient?: NotyClient): Command {
       }
     });
 
+  pages
+    .command("archive <id>")
+    .description("Archive (soft-delete) a page")
+    .action(async (id) => {
+      try {
+        const client = getClient();
+        const mode = getOutputMode();
+
+        const result = await client.archivePage(id);
+
+        if (mode === "json") {
+          jsonOutput(result);
+        } else if (mode === "plain") {
+          console.log(`${result.id}\t${result.title}\t${result.url}`);
+        } else {
+          console.log(`Page archived: ${result.title}`);
+          console.log(`  ID: ${result.id}`);
+          console.log(`  URL: ${result.url}`);
+        }
+      } catch (err: any) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
   // --- databases ---
   const databases = program
     .command("databases")

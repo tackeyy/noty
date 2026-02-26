@@ -267,6 +267,17 @@ export class NotyClient {
     return pageToResult(page as any);
   }
 
+  async archivePage(idOrUrl: string): Promise<PageResult> {
+    const pageId = extractNotionId(idOrUrl);
+    const page = await withRetry(() =>
+      this.client.pages.update({
+        page_id: pageId,
+        archived: true,
+      }),
+    );
+    return pageToResult(page as any);
+  }
+
   async getDatabase(idOrUrl: string): Promise<DatabaseResult> {
     const dbId = extractNotionId(idOrUrl);
     const db = (await withRetry(() =>

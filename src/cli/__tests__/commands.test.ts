@@ -56,6 +56,14 @@ function createMockClient(): NotyClient {
       lastEditedTime: "2026-01-05T00:00:00.000Z",
       properties: {},
     }),
+    archivePage: vi.fn().mockResolvedValue({
+      id: "page-id-1",
+      title: "Archived Page",
+      url: "https://notion.so/Page-1",
+      createdTime: "2026-01-01T00:00:00.000Z",
+      lastEditedTime: "2026-01-06T00:00:00.000Z",
+      properties: {},
+    }),
     getDatabase: vi.fn().mockResolvedValue({
       id: "db-id-1",
       title: "Test Database",
@@ -391,6 +399,14 @@ describe("CLI commands", () => {
       await runCmd(mockClient, ["pages", "clear", "page-id-1"]);
 
       expect(mockClient.clearPage).toHaveBeenCalledWith("page-id-1");
+    });
+  });
+
+  describe("pages archive", () => {
+    it("calls archivePage() with the given id", async () => {
+      await runCmd(mockClient, ["pages", "archive", "page-id-1"]);
+
+      expect(mockClient.archivePage).toHaveBeenCalledWith("page-id-1");
     });
   });
 

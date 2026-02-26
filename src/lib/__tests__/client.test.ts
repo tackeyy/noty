@@ -244,6 +244,17 @@ describe("NotyClient", () => {
     });
   });
 
+  describe("archivePage", () => {
+    it("archives a page by setting archived: true", async () => {
+      const result = await client.archivePage("page-id-1");
+      expect(mockClient.pages.update).toHaveBeenCalledWith({
+        page_id: "page-id-1",
+        archived: true,
+      });
+      expect(result.id).toBe("page-id-1");
+    });
+  });
+
   describe("getDatabase", () => {
     it("returns database metadata", async () => {
       const result = await client.getDatabase("db-id-1");
