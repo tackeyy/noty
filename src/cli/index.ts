@@ -427,7 +427,12 @@ export function createProgram(injectedClient?: NotyClient): Command {
 }
 
 // Only parse when this module is the entry point
-const isMain = process.argv[1]?.endsWith("index.js") || process.argv[1]?.endsWith("index.ts");
+// Note: process.argv[1] may be a symlink name (e.g., "noty") via npm link,
+// so we also check for the binary name in addition to index.js/index.ts
+import { realpathSync } from "node:fs";
+const scriptPath = process.argv[1] ?? "";
+const resolvedPath = (() => { try { return realpathSync(scriptPath); } catch { return scriptPath; } })();
+const isMain = resolvedPath.endsWith("index.js") || resolvedPath.endsWith("index.ts");
 if (isMain) {
   createProgram().parse();
 }
