@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
-import { createProgram } from "../index.js";
+import { createProgram, checkIsMain } from "../index.js";
 import type { NotyClient } from "../../lib/client.js";
+import { symlinkSync, unlinkSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 // --- Mock NotyClient factory ---
 
@@ -532,5 +535,40 @@ describe("CLI commands", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith("Error: Unauthorized");
       expect(processExitSpy).toHaveBeenCalledWith(1);
     });
+  });
+});
+
+describe("checkIsMain", () => {
+  const tempDir = join(tmpdir(), `noty-test-${Date.now()}`);
+  const realFile = join(tempDir, "index.js");
+  const symlinkFile = join(tempDir, "noty");
+
+  beforeEach(() => {
+    mkdirSync(tempDir, { recursive: true });
+    writeFileSync(realFile, "// stub");
+    try { unlinkSync(symlinkFile); } catch { /* ignore */ }
+    symlinkSync(realFile, symlinkFile);
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("index.js で終わるパスは true を返す", () => {
+    expect(checkIsMain(realFile)).toBe(true);
+  });
+
+  it("symlink 経由でも解決先が index.js なら true を返す", () => {
+    expect(checkIsMain(symlinkFile)).toBe(true);
+  });
+
+  it("index.js/index.ts に解決されないパスは false を返す", () => {
+    const otherFile = join(tempDir, "other.js");
+    writeFileSync(otherFile, "// stub");
+    expect(checkIsMain(otherFile)).toBe(false);
+  });
+
+  it("存在しないパスは false を返す（realpathSync がフォールバック）", () => {
+    expect(checkIsMain("/nonexistent/path/noty")).toBe(false);
   });
 });

@@ -428,11 +428,16 @@ export function createProgram(injectedClient?: NotyClient): Command {
 
 // Only parse when this module is the entry point
 // Note: process.argv[1] may be a symlink name (e.g., "noty") via npm link,
-// so we also check for the binary name in addition to index.js/index.ts
+// so we resolve symlinks before checking the file extension
 import { realpathSync } from "node:fs";
-const scriptPath = process.argv[1] ?? "";
-const resolvedPath = (() => { try { return realpathSync(scriptPath); } catch { return scriptPath; } })();
-const isMain = resolvedPath.endsWith("index.js") || resolvedPath.endsWith("index.ts");
+
+/** Resolve symlinks and check if the path points to this module's entry file */
+export function checkIsMain(scriptPath: string): boolean {
+  const resolved = (() => { try { return realpathSync(scriptPath); } catch { return scriptPath; } })();
+  return resolved.endsWith("index.js") || resolved.endsWith("index.ts");
+}
+
+const isMain = checkIsMain(process.argv[1] ?? "");
 if (isMain) {
   createProgram().parse();
 }
