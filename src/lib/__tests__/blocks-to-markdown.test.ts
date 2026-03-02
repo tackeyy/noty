@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { blocksToMarkdownSync, richTextToMarkdown } from "../blocks-to-markdown.js";
+import { describe, it, expect, vi } from "vitest";
+import { blocksToMarkdown, blocksToMarkdownSync, richTextToMarkdown } from "../blocks-to-markdown.js";
 
 describe("richTextToMarkdown", () => {
   it("converts plain text", () => {
@@ -373,5 +373,88 @@ describe("blocksToMarkdownSync", () => {
     expect(blocksToMarkdownSync(blocks)).toBe(
       "| A | B |\n| --- | --- |\n| 1 | 2 |",
     );
+  });
+});
+
+describe("blocksToMarkdown (async)", () => {
+  function makeBlock(id: string, type: string, text: string, hasChildren = false) {
+    return {
+      id,
+      type,
+      has_children: hasChildren,
+      [type]: {
+        rich_text: [{ type: "text", plain_text: text, text: { content: text } }],
+      },
+    };
+  }
+
+  it("子ブロックを持つ複数ブロックのfetchChildrenが並列で呼ばれる", async () => {
+    const blocks = [
+      makeBlock("a", "heading_1", "Section A", true),
+      makeBlock("b", "heading_1", "Section B", true),
+      makeBlock("c", "heading_1", "Section C", true),
+    ];
+
+    // Track call order to verify parallel execution
+    const callLog: string[] = [];
+    const fetchChildren = vi.fn(async (blockId: string) => {
+      callLog.push(`start:${blockId}`);
+      // Simulate network delay
+      await new Promise((r) => setTimeout(r, 10));
+      callLog.push(`end:${blockId}`);
+      return [makeBlock(`${blockId}-child`, "paragraph", `Child of ${blockId}`)];
+    });
+
+    await blocksToMarkdown(blocks, { fetchChildren });
+
+    // All fetches should start before any ends (parallel)
+    const starts = callLog.filter((l) => l.startsWith("start:"));
+    const firstEnd = callLog.findIndex((l) => l.startsWith("end:"));
+    expect(starts.length).toBe(3);
+    expect(firstEnd).toBeGreaterThanOrEqual(3); // All 3 starts before first end
+  });
+
+  it("子ブロックのMarkdownが親の後にインデント付きで出力される", async () => {
+    const blocks = [
+      makeBlock("a", "heading_1", "Parent", true),
+    ];
+    const fetchChildren = vi.fn(async () => [
+      makeBlock("a1", "paragraph", "Child text"),
+    ]);
+
+    const md = await blocksToMarkdown(blocks, { fetchChildren });
+    expect(md).toBe("# Parent\n  Child text");
+  });
+
+  it("fetchChildren未指定時はhas_children: trueでも子ブロックを取得しない", async () => {
+    const blocks = [makeBlock("a", "paragraph", "Text", true)];
+    const md = await blocksToMarkdown(blocks);
+    expect(md).toBe("Text");
+  });
+
+  it("トグルH1の子にH2とパラグラフが混在する構造を正しく変換する", async () => {
+    const blocks = [
+      makeBlock("toggle-1", "heading_1", "セールス", true),
+      makeBlock("toggle-2", "heading_1", "トピックス", true),
+    ];
+
+    const childrenByBlock: Record<string, any[]> = {
+      "toggle-1": [
+        makeBlock("s-h2", "heading_2", "金融チャネル"),
+        makeBlock("s-p1", "bulleted_list_item", "成約: 3件"),
+      ],
+      "toggle-2": [
+        makeBlock("t-p1", "paragraph", "資金調達の進捗"),
+      ],
+    };
+
+    const fetchChildren = vi.fn(async (id: string) => childrenByBlock[id] || []);
+
+    const md = await blocksToMarkdown(blocks, { fetchChildren });
+    expect(md).toContain("# セールス");
+    expect(md).toContain("  ## 金融チャネル");
+    expect(md).toContain("  - 成約: 3件");
+    expect(md).toContain("# トピックス");
+    expect(md).toContain("  資金調達の進捗");
   });
 });

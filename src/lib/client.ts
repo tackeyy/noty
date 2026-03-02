@@ -79,44 +79,55 @@ export class NotyClient {
     }));
   }
 
-  async getPage(idOrUrl: string): Promise<string> {
-    const pageId = extractNotionId(idOrUrl);
-
-    // Get blocks
-    const blocks: any[] = [];
+  /**
+   * Fetch all children for a single block (handles pagination).
+   */
+  private async fetchBlockChildren(blockId: string): Promise<any[]> {
+    const childBlocks: any[] = [];
     let cursor: string | undefined;
-
     do {
       const res = await withRetry(() =>
         this.client.blocks.children.list({
-          block_id: pageId,
+          block_id: blockId,
           page_size: 100,
           start_cursor: cursor,
         }),
       );
-      blocks.push(...res.results);
+      childBlocks.push(...res.results);
       cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
     } while (cursor);
+    return childBlocks;
+  }
 
-    // Convert to markdown with recursive child fetching
+  async getPage(idOrUrl: string): Promise<string> {
+    const pageId = extractNotionId(idOrUrl);
+
+    // Get top-level blocks
+    const blocks = await this.fetchBlockChildren(pageId);
+
+    // BFS: pre-fetch all children across all depths in parallel
+    const childrenMap = new Map<string, any[]>();
+    let queue = blocks.filter((b: any) => b.has_children);
+
+    while (queue.length > 0) {
+      const results = await Promise.all(
+        queue.map(async (b: any) => ({
+          id: b.id,
+          children: await this.fetchBlockChildren(b.id),
+        })),
+      );
+      const nextQueue: any[] = [];
+      for (const { id, children } of results) {
+        childrenMap.set(id, children);
+        nextQueue.push(...children.filter((c: any) => c.has_children));
+      }
+      queue = nextQueue;
+    }
+
+    // Convert to markdown using pre-fetched children (no network calls)
     const markdown = await blocksToMarkdown(blocks as any, {
       fetchChildren: async (blockId: string) => {
-        const childBlocks: any[] = [];
-        let childCursor: string | undefined;
-        do {
-          const res = await withRetry(() =>
-            this.client.blocks.children.list({
-              block_id: blockId,
-              page_size: 100,
-              start_cursor: childCursor,
-            }),
-          );
-          childBlocks.push(...res.results);
-          childCursor = res.has_more
-            ? (res.next_cursor ?? undefined)
-            : undefined;
-        } while (childCursor);
-        return childBlocks as any;
+        return (childrenMap.get(blockId) || []) as any;
       },
     });
 

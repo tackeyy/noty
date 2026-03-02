@@ -65,6 +65,185 @@ describe("NotyClient", () => {
       expect(content).toBe("Hello World");
       expect(mockClient.blocks.children.list).toHaveBeenCalled();
     });
+
+    it("子ブロックなしのページはトップレベル1回のみAPI呼び出し", async () => {
+      mockClient.blocks.children.list.mockResolvedValueOnce({
+        results: [
+          {
+            id: "block-flat",
+            type: "paragraph",
+            has_children: false,
+            paragraph: {
+              rich_text: [{ plain_text: "Flat", type: "text", text: { content: "Flat" } }],
+            },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+
+      const content = await client.getPage("page-flat");
+      expect(content).toBe("Flat");
+      expect(mockClient.blocks.children.list).toHaveBeenCalledTimes(1);
+    });
+
+    it("1階層の子ブロックをBFSで取得しMarkdownに変換する", async () => {
+      // Top-level: 2 toggle headings with children
+      mockClient.blocks.children.list
+        .mockResolvedValueOnce({
+          results: [
+            {
+              id: "h1-a",
+              type: "heading_1",
+              has_children: true,
+              heading_1: {
+                rich_text: [{ plain_text: "Section A", type: "text", text: { content: "Section A" } }],
+              },
+            },
+            {
+              id: "h1-b",
+              type: "heading_1",
+              has_children: true,
+              heading_1: {
+                rich_text: [{ plain_text: "Section B", type: "text", text: { content: "Section B" } }],
+              },
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        // Children of h1-a
+        .mockResolvedValueOnce({
+          results: [
+            {
+              id: "a-child",
+              type: "paragraph",
+              has_children: false,
+              paragraph: {
+                rich_text: [{ plain_text: "Content A", type: "text", text: { content: "Content A" } }],
+              },
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        // Children of h1-b
+        .mockResolvedValueOnce({
+          results: [
+            {
+              id: "b-child",
+              type: "paragraph",
+              has_children: false,
+              paragraph: {
+                rich_text: [{ plain_text: "Content B", type: "text", text: { content: "Content B" } }],
+              },
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        });
+
+      const content = await client.getPage("page-nested");
+      expect(content).toContain("# Section A");
+      expect(content).toContain("Content A");
+      expect(content).toContain("# Section B");
+      expect(content).toContain("Content B");
+      // top-level + 2 children = 3 calls
+      expect(mockClient.blocks.children.list).toHaveBeenCalledTimes(3);
+    });
+
+    it("2階層の子ブロックをBFS2ラウンドで取得する", async () => {
+      mockClient.blocks.children.list
+        // Top-level: 1 toggle heading
+        .mockResolvedValueOnce({
+          results: [
+            {
+              id: "h1",
+              type: "heading_1",
+              has_children: true,
+              heading_1: {
+                rich_text: [{ plain_text: "Top", type: "text", text: { content: "Top" } }],
+              },
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        // BFS round 1: children of h1
+        .mockResolvedValueOnce({
+          results: [
+            {
+              id: "h2",
+              type: "heading_2",
+              has_children: true,
+              heading_2: {
+                rich_text: [{ plain_text: "Mid", type: "text", text: { content: "Mid" } }],
+              },
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        // BFS round 2: children of h2
+        .mockResolvedValueOnce({
+          results: [
+            {
+              id: "leaf",
+              type: "paragraph",
+              has_children: false,
+              paragraph: {
+                rich_text: [{ plain_text: "Leaf", type: "text", text: { content: "Leaf" } }],
+              },
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        });
+
+      const content = await client.getPage("page-deep");
+      expect(content).toContain("# Top");
+      expect(content).toContain("Mid");
+      expect(content).toContain("Leaf");
+      // top-level + round1 + round2 = 3 calls
+      expect(mockClient.blocks.children.list).toHaveBeenCalledTimes(3);
+    });
+
+    it("fetchBlockChildrenのページネーションで100件超のブロックを正しく取得する", async () => {
+      const page1 = Array.from({ length: 100 }, (_, i) => ({
+        id: `block-${i}`,
+        type: "paragraph",
+        has_children: false,
+        paragraph: {
+          rich_text: [{ plain_text: `P${i}`, type: "text", text: { content: `P${i}` } }],
+        },
+      }));
+      const page2 = Array.from({ length: 20 }, (_, i) => ({
+        id: `block-${100 + i}`,
+        type: "paragraph",
+        has_children: false,
+        paragraph: {
+          rich_text: [{ plain_text: `P${100 + i}`, type: "text", text: { content: `P${100 + i}` } }],
+        },
+      }));
+
+      mockClient.blocks.children.list
+        .mockResolvedValueOnce({
+          results: page1,
+          has_more: true,
+          next_cursor: "cursor-2",
+        })
+        .mockResolvedValueOnce({
+          results: page2,
+          has_more: false,
+          next_cursor: null,
+        });
+
+      const content = await client.getPage("page-large");
+      // Should contain all 120 paragraphs
+      expect(content).toContain("P0");
+      expect(content).toContain("P119");
+      expect(mockClient.blocks.children.list).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("getPageMetadata", () => {

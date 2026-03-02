@@ -159,6 +159,21 @@ export async function blocksToMarkdown(
   options?: BlocksToMarkdownOptions,
   indent: number = 0,
 ): Promise<string> {
+  // Pre-fetch all children in parallel for this level
+  const childrenMap = new Map<string, Block[]>();
+  if (options?.fetchChildren) {
+    const blocksWithChildren = blocks.filter((b) => b.has_children);
+    const results = await Promise.all(
+      blocksWithChildren.map(async (b) => ({
+        id: b.id,
+        children: await options.fetchChildren!(b.id),
+      })),
+    );
+    for (const { id, children } of results) {
+      childrenMap.set(id, children);
+    }
+  }
+
   const lines: string[] = [];
   let isFirstTableRow = true;
 
@@ -185,9 +200,9 @@ export async function blocksToMarkdown(
       if (line) lines.push(line);
     }
 
-    // Recursively fetch and convert children
-    if (block.has_children && options?.fetchChildren) {
-      const children = await options.fetchChildren(block.id);
+    // Convert pre-fetched children to markdown
+    const children = childrenMap.get(block.id);
+    if (children) {
       const childMd = await blocksToMarkdown(children, options, indent + 1);
       if (childMd) lines.push(childMd);
     }
