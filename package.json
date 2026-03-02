@@ -16,9 +16,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "prepare": "npm run build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15",
