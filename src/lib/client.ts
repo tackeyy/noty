@@ -164,15 +164,32 @@ export class NotyClient {
       properties,
     };
 
-    // Add content blocks if provided
+    // Add content blocks if provided (chunked to stay within Notion API limit of 100)
+    let allBlocks: unknown[] = [];
     if (args.content) {
-      createArgs.children = markdownToBlocks(args.content);
+      allBlocks = markdownToBlocks(args.content);
+      createArgs.children = allBlocks.slice(0, 100);
     }
 
     const page = await withRetry(() =>
       this.client.pages.create(createArgs as any),
     );
-    return pageToResult(page as any);
+    const result = pageToResult(page as any);
+
+    // Append remaining blocks in chunks of 100
+    if (allBlocks.length > 100) {
+      for (let i = 100; i < allBlocks.length; i += 100) {
+        const chunk = allBlocks.slice(i, i + 100);
+        await withRetry(() =>
+          this.client.blocks.children.append({
+            block_id: result.id,
+            children: chunk as any,
+          }),
+        );
+      }
+    }
+
+    return result;
   }
 
   async updatePage(
