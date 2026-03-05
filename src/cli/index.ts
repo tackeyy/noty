@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { existsSync, readFileSync } from "node:fs";
 import { NotyClient } from "../lib/client.js";
 import { readStdin } from "./stdin.js";
+
+function resolveContent(opts: { content?: string; contentFile?: string }): string | undefined {
+  if (opts.content && opts.contentFile) {
+    throw new Error("--content and --content-file cannot be used together");
+  }
+  if (opts.contentFile) {
+    if (!existsSync(opts.contentFile)) {
+      throw new Error(`--content-file: file not found: ${opts.contentFile}`);
+    }
+    return readFileSync(opts.contentFile, "utf-8");
+  }
+  return opts.content;
+}
 
 function createClientFromEnv(): NotyClient {
   const token = process.env.NOTION_TOKEN;
@@ -139,6 +153,7 @@ export function createProgram(injectedClient?: NotyClient): Command {
     .option("--parent-type <type>", "Parent type (page_id or database_id)")
     .option("--title <title>", "Page title")
     .option("--content <markdown>", "Page content as Markdown (use '-' to read from stdin)")
+    .option("--content-file <path>", "Read page content from a file")
     .option("--properties <json>", "Properties as JSON string (use '-' to read from stdin)")
     .action(async (opts) => {
       try {
@@ -156,7 +171,7 @@ export function createProgram(injectedClient?: NotyClient): Command {
         const client = getClient();
         const mode = getOutputMode();
 
-        let content = opts.content;
+        let content = resolveContent(opts);
         if (content === "-") content = await readStdin();
 
         let properties = opts.properties;
@@ -191,6 +206,7 @@ export function createProgram(injectedClient?: NotyClient): Command {
     .description("Update a page")
     .option("--title <title>", "New page title")
     .option("--content <markdown>", "New page content as Markdown (use '-' to read from stdin)")
+    .option("--content-file <path>", "Read page content from a file")
     .option("--properties <json>", "Properties as JSON string (use '-' to read from stdin)")
     .option("--append", "Append content instead of replacing")
     .action(async (id, opts) => {
@@ -198,7 +214,7 @@ export function createProgram(injectedClient?: NotyClient): Command {
         const client = getClient();
         const mode = getOutputMode();
 
-        let content = opts.content;
+        let content = resolveContent(opts);
         if (content === "-") content = await readStdin();
 
         let properties = opts.properties;

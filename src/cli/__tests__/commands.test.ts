@@ -394,6 +394,108 @@ describe("CLI commands", () => {
     });
   });
 
+  // =========================================================================
+  // --content-file option (Issue #51)
+  // =========================================================================
+
+  describe("pages create --content-file", () => {
+    const tempDir = join(tmpdir(), `noty-content-file-test-${Date.now()}`);
+    const contentFile = join(tempDir, "test-content.md");
+
+    beforeEach(() => {
+      mkdirSync(tempDir, { recursive: true });
+      writeFileSync(contentFile, "# File Content\n\nFrom file.");
+    });
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it("--content-file でファイルからコンテンツを読み取って createPage に渡す", async () => {
+      await runCmd(mockClient, [
+        "pages", "create",
+        "--parent", "parent-id",
+        "--title", "My Page",
+        "--content-file", contentFile,
+      ]);
+
+      expect(mockClient.createPage).toHaveBeenCalledWith(
+        expect.objectContaining({ content: "# File Content\n\nFrom file." }),
+      );
+    });
+
+    it("--content と --content-file の同時指定はエラーになる", async () => {
+      await runCmd(mockClient, [
+        "pages", "create",
+        "--parent", "parent-id",
+        "--title", "My Page",
+        "--content", "inline",
+        "--content-file", contentFile,
+      ]);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Error: --content and --content-file cannot be used together",
+      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      expect(mockClient.createPage).not.toHaveBeenCalled();
+    });
+
+    it("存在しないファイルを指定するとエラーになる", async () => {
+      await runCmd(mockClient, [
+        "pages", "create",
+        "--parent", "parent-id",
+        "--title", "My Page",
+        "--content-file", "/nonexistent/file.md",
+      ]);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("--content-file"),
+      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      expect(mockClient.createPage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pages update --content-file", () => {
+    const tempDir = join(tmpdir(), `noty-update-file-test-${Date.now()}`);
+    const contentFile = join(tempDir, "update-content.md");
+
+    beforeEach(() => {
+      mkdirSync(tempDir, { recursive: true });
+      writeFileSync(contentFile, "Updated from file.");
+    });
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it("--content-file でファイルからコンテンツを読み取って updatePage に渡す", async () => {
+      await runCmd(mockClient, [
+        "pages", "update", "page-id-1",
+        "--content-file", contentFile,
+      ]);
+
+      expect(mockClient.updatePage).toHaveBeenCalledWith(
+        "page-id-1",
+        expect.objectContaining({ content: "Updated from file." }),
+      );
+    });
+
+    it("--content と --content-file の同時指定はエラーになる", async () => {
+      await runCmd(mockClient, [
+        "pages", "update", "page-id-1",
+        "--content", "inline",
+        "--content-file", contentFile,
+      ]);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Error: --content and --content-file cannot be used together",
+      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      expect(mockClient.updatePage).not.toHaveBeenCalled();
+    });
+  });
+
   describe("pages clear", () => {
     it("calls clearPage() with the given id", async () => {
       await runCmd(mockClient, ["pages", "clear", "page-id-1"]);
