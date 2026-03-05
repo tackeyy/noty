@@ -293,6 +293,53 @@ describe("NotyClient", () => {
       const callArgs = mockClient.pages.create.mock.calls[0][0];
       expect(callArgs.parent).toEqual({ page_id: "page-parent-id" });
     });
+
+    it("コンテンツなしの場合は children プロパティが含まれず blocks.children.append も呼ばれない", async () => {
+      await client.createPage({ parentId: "parent-id", title: "No Content" });
+      const callArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(callArgs.children).toBeUndefined();
+      expect(mockClient.blocks.children.append).not.toHaveBeenCalled();
+    });
+
+    it("100ブロック以下のコンテンツは pages.create の children に全て渡し blocks.children.append は呼ばれない", async () => {
+      // 50行 → 50ブロック（100以下）
+      const content = Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n\n");
+      await client.createPage({ parentId: "parent-id", content });
+      const callArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(callArgs.children.length).toBe(50);
+      expect(mockClient.blocks.children.append).not.toHaveBeenCalled();
+    });
+
+    it("101ブロックのコンテンツは pages.create に最初の100ブロックを渡し blocks.children.append で残り1ブロックを追加する", async () => {
+      const content = Array.from({ length: 101 }, (_, i) => `Line ${i}`).join("\n\n");
+      await client.createPage({ parentId: "parent-id", content });
+      const createArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(createArgs.children.length).toBe(100);
+      expect(mockClient.blocks.children.append).toHaveBeenCalledTimes(1);
+      const appendArgs = mockClient.blocks.children.append.mock.calls[0][0];
+      expect(appendArgs.children.length).toBe(1);
+      expect(appendArgs.block_id).toBe("new-page-id");
+    });
+
+    it("150ブロックのコンテンツは pages.create に100ブロック、blocks.children.append で残り50ブロックを追加する", async () => {
+      const content = Array.from({ length: 150 }, (_, i) => `Line ${i}`).join("\n\n");
+      await client.createPage({ parentId: "parent-id", content });
+      const createArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(createArgs.children.length).toBe(100);
+      expect(mockClient.blocks.children.append).toHaveBeenCalledTimes(1);
+      const appendArgs = mockClient.blocks.children.append.mock.calls[0][0];
+      expect(appendArgs.children.length).toBe(50);
+    });
+
+    it("250ブロックのコンテンツは pages.create に100ブロック、blocks.children.append を2回（100+50ブロック）呼ぶ", async () => {
+      const content = Array.from({ length: 250 }, (_, i) => `Line ${i}`).join("\n\n");
+      await client.createPage({ parentId: "parent-id", content });
+      const createArgs = mockClient.pages.create.mock.calls[0][0];
+      expect(createArgs.children.length).toBe(100);
+      expect(mockClient.blocks.children.append).toHaveBeenCalledTimes(2);
+      expect(mockClient.blocks.children.append.mock.calls[0][0].children.length).toBe(100);
+      expect(mockClient.blocks.children.append.mock.calls[1][0].children.length).toBe(50);
+    });
   });
 
   describe("updatePage", () => {
