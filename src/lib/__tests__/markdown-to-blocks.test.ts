@@ -184,4 +184,105 @@ console.log("hello");
       "quote",
     ]);
   });
+
+  // 裸URL変換テスト
+  it("裸URLがtext.link.urlを持つrich_textに変換される", () => {
+    const blocks = markdownToBlocks("https://example.com");
+    expect(blocks).toHaveLength(1);
+    const richText = (blocks[0].paragraph as any).rich_text;
+    const linkPart = richText.find((rt: any) => rt.text.link);
+    expect(linkPart).toBeDefined();
+    expect(linkPart.text.link.url).toBe("https://example.com");
+  });
+
+  it("裸URLのテキスト内容がURL自体になる", () => {
+    const blocks = markdownToBlocks("https://example.com");
+    const richText = (blocks[0].paragraph as any).rich_text;
+    const linkPart = richText.find((rt: any) => rt.text.link);
+    expect(linkPart.text.content).toBe("https://example.com");
+  });
+
+  it("文中の裸URLが前後のテキストと正しく分割される", () => {
+    const blocks = markdownToBlocks("詳細は https://example.com を参照");
+    expect(blocks).toHaveLength(1);
+    const richText = (blocks[0].paragraph as any).rich_text;
+    expect(richText.length).toBeGreaterThanOrEqual(2);
+    const linkPart = richText.find((rt: any) => rt.text.link);
+    expect(linkPart).toBeDefined();
+    expect(linkPart.text.link.url).toBe("https://example.com");
+    const plainParts = richText.filter((rt: any) => !rt.text.link);
+    const allPlainText = plainParts.map((rt: any) => rt.text.content).join("");
+    expect(allPlainText).toContain("詳細は ");
+  });
+
+  // Markdownテーブル変換テスト
+  it("Markdownテーブルがtableブロックに変換される", () => {
+    const md = `| 名前 | 年齢 |
+| --- | --- |
+| Alice | 30 |
+| Bob | 25 |`;
+    const blocks = markdownToBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("table");
+  });
+
+  it("tableのhas_column_headerがtrueになる", () => {
+    const md = `| 名前 | 年齢 |
+| --- | --- |
+| Alice | 30 |`;
+    const blocks = markdownToBlocks(md);
+    const table = blocks[0].table as any;
+    expect(table.has_column_header).toBe(true);
+  });
+
+  it("tableのtable_widthが列数と一致する", () => {
+    const md = `| A | B | C |
+| --- | --- | --- |
+| 1 | 2 | 3 |`;
+    const blocks = markdownToBlocks(md);
+    const table = blocks[0].table as any;
+    expect(table.table_width).toBe(3);
+  });
+
+  it("table_rowのcellsが正しいセル内容になる", () => {
+    const md = `| 名前 | 年齢 |
+| --- | --- |
+| Alice | 30 |`;
+    const blocks = markdownToBlocks(md);
+    const children = blocks[0].children as any[];
+    // ヘッダー行 + データ行 = 2行
+    expect(children).toHaveLength(2);
+    const headerRow = children[0].table_row;
+    expect(headerRow.cells[0][0].text.content).toBe("名前");
+    expect(headerRow.cells[1][0].text.content).toBe("年齢");
+    const dataRow = children[1].table_row;
+    expect(dataRow.cells[0][0].text.content).toBe("Alice");
+    expect(dataRow.cells[1][0].text.content).toBe("30");
+  });
+
+  it("区切り行（| --- |）がテーブルに含まれない", () => {
+    const md = `| A | B |
+| --- | --- |
+| 1 | 2 |
+| 3 | 4 |`;
+    const blocks = markdownToBlocks(md);
+    const children = blocks[0].children as any[];
+    // ヘッダー行 + データ2行 = 3行（区切り行は含まない）
+    expect(children).toHaveLength(3);
+  });
+
+  it("テーブルの前後のブロックが維持される", () => {
+    const md = `## セクション
+
+| A | B |
+| --- | --- |
+| 1 | 2 |
+
+末尾の段落`;
+    const blocks = markdownToBlocks(md);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0].type).toBe("heading_2");
+    expect(blocks[1].type).toBe("table");
+    expect(blocks[2].type).toBe("paragraph");
+  });
 });

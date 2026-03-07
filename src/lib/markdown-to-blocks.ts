@@ -32,9 +32,16 @@ function parseInlineFormatting(text: string): RichTextObject[] {
   const results: RichTextObject[] = [];
 
   // Regex to match markdown inline formatting
-  // Order matters: bold+italic first, then bold, italic, strikethrough, code, links
+  // Order matters: bare URLs first, then markdown links, then formatting
+  // Group 1: bare URL (https?://...)
+  // Group 2: [text](url) link — Group 3: text, Group 4: url
+  // Group 5: `code` — Group 6: content
+  // Group 7: ***bold+italic*** — Group 8: content
+  // Group 9: **bold** — Group 10: content
+  // Group 11: *italic* — Group 12: content
+  // Group 13: ~~strikethrough~~ — Group 14: content
   const pattern =
-    /(\[([^\]]+)\]\(([^)]+)\))|(`([^`]+)`)|(\*\*\*([^*]+)\*\*\*)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(\~\~([^~]+)\~\~)/g;
+    /(https?:\/\/[^\s\)\]>]+)|(\[([^\]]+)\]\(([^)]+)\))|(`([^`]+)`)|(\*\*\*([^*]+)\*\*\*)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(\~\~([^~]+)\~\~)/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -53,45 +60,52 @@ function parseInlineFormatting(text: string): RichTextObject[] {
     }
 
     if (match[1]) {
+      // Bare URL: https://...
+      results.push({
+        type: "text",
+        text: { content: match[1], link: { url: match[1] } },
+        annotations: { ...DEFAULT_ANNOTATIONS },
+      });
+    } else if (match[2]) {
       // Link: [text](url)
       results.push({
         type: "text",
-        text: { content: match[2], link: { url: match[3] } },
+        text: { content: match[3], link: { url: match[4] } },
         annotations: { ...DEFAULT_ANNOTATIONS },
       });
-    } else if (match[4]) {
+    } else if (match[5]) {
       // Code: `text`
       results.push({
         type: "text",
-        text: { content: match[5] },
+        text: { content: match[6] },
         annotations: { ...DEFAULT_ANNOTATIONS, code: true },
       });
-    } else if (match[6]) {
+    } else if (match[7]) {
       // Bold+Italic: ***text***
       results.push({
         type: "text",
-        text: { content: match[7] },
+        text: { content: match[8] },
         annotations: { ...DEFAULT_ANNOTATIONS, bold: true, italic: true },
       });
-    } else if (match[8]) {
+    } else if (match[9]) {
       // Bold: **text**
       results.push({
         type: "text",
-        text: { content: match[9] },
+        text: { content: match[10] },
         annotations: { ...DEFAULT_ANNOTATIONS, bold: true },
       });
-    } else if (match[10]) {
+    } else if (match[11]) {
       // Italic: *text*
       results.push({
         type: "text",
-        text: { content: match[11] },
+        text: { content: match[12] },
         annotations: { ...DEFAULT_ANNOTATIONS, italic: true },
       });
-    } else if (match[12]) {
+    } else if (match[13]) {
       // Strikethrough: ~~text~~
       results.push({
         type: "text",
-        text: { content: match[13] },
+        text: { content: match[14] },
         annotations: { ...DEFAULT_ANNOTATIONS, strikethrough: true },
       });
     }
@@ -127,13 +141,78 @@ function makeRichText(text: string): RichTextObject[] {
   return parseInlineFormatting(text);
 }
 
+/** セパレーター行（| --- | :---: | など）かどうか判定 */
+function isTableSeparator(line: string): boolean {
+  const cells = line
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|");
+  return cells.every((cell) => /^[\s\-:]+$/.test(cell));
+}
+
+/** テーブル行をパースしてセル文字列の配列を返す */
+function parseTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+/** テーブル行の配列から Notion table ブロックを生成 */
+function buildTableBlock(tableLines: string[]): NotionBlock {
+  const dataLines = tableLines.filter((l) => !isTableSeparator(l));
+  const tableWidth = parseTableRow(dataLines[0]).length;
+
+  const children = dataLines.map((line) => {
+    const cells = parseTableRow(line);
+    return {
+      object: "block" as const,
+      type: "table_row",
+      table_row: {
+        cells: cells.map((cell) => makeRichText(cell)),
+      },
+    };
+  });
+
+  return {
+    object: "block",
+    type: "table",
+    table: {
+      table_width: tableWidth,
+      has_column_header: true,
+      has_row_header: false,
+    },
+    children,
+  };
+}
+
 export function markdownToBlocks(markdown: string): NotionBlock[] {
   const lines = markdown.split("\n");
   const blocks: NotionBlock[] = [];
   let i = 0;
 
+  /** テーブル行を収集して確定する */
+  function flushTable(tableLines: string[]): void {
+    if (tableLines.length > 0) {
+      blocks.push(buildTableBlock(tableLines));
+    }
+  }
+
   while (i < lines.length) {
     const line = lines[i];
+
+    // Table row
+    if (line.trim().startsWith("|")) {
+      const tableLines: string[] = [line];
+      i++;
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      flushTable(tableLines);
+      continue;
+    }
 
     // Fenced code block
     const codeMatch = line.match(/^```(\w*)$/);
