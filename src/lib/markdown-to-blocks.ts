@@ -182,8 +182,8 @@ function buildTableBlock(tableLines: string[]): NotionBlock {
       table_width: tableWidth,
       has_column_header: true,
       has_row_header: false,
+      children,
     },
-    children,
   };
 }
 
