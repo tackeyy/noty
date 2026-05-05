@@ -42,10 +42,35 @@ In Notion, open any page or database you want noty to access, click **...** > **
 export NOTION_TOKEN="ntn_..."
 ```
 
+### Alternative: Use browser session token (token_v2)
+
+If you want to access your own private pages without registering a Notion integration, you can use your browser session cookie (`token_v2`). This method does not require any integration setup.
+
+1. Open [notion.so](https://www.notion.so) in your browser and log in
+2. Open DevTools → **Application** → **Cookies** → find `token_v2` and copy its value
+3. Run:
+
+```bash
+noty auth set-cookie <paste-token_v2-here>
+```
+
+Check status and manage authentication:
+
+```bash
+noty auth status           # Show current auth type
+noty auth logout           # Remove saved token
+```
+
+> **Note:** The `token_v2` cookie expires when you log out of Notion in the browser. Re-run `noty auth set-cookie` if authentication stops working.
+
 ## CLI Commands
 
 ```
 noty auth test                         # Test authentication
+noty auth set-cookie <token_v2>        # Save browser session token (no integration needed)
+noty auth login                        # Authenticate via Notion OAuth (requires integration)
+noty auth status                       # Show current authentication status
+noty auth logout                       # Remove saved OAuth/token_v2 credential
 noty search <query>                    # Search pages and databases
   --filter <type>                      #   Filter by type (page or database)
   --limit <n>                          #   Maximum results (default: 10)

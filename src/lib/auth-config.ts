@@ -10,11 +10,16 @@ export interface OAuthConfig {
   workspace_name: string;
 }
 
-export interface NotyConfig {
-  auth?: OAuthConfig;
+export interface TokenV2Config {
+  type: "token_v2";
+  token_v2: string;
 }
 
-export type AuthType = "integration" | "oauth" | "none";
+export interface NotyConfig {
+  auth?: OAuthConfig | TokenV2Config;
+}
+
+export type AuthType = "integration" | "oauth" | "token_v2" | "none";
 
 export function getConfigDir(): string {
   return process.env.NOTY_CONFIG_DIR ?? join(homedir(), ".config", "noty");
@@ -55,9 +60,18 @@ export function getOAuthToken(): string | null {
   return null;
 }
 
+export function getTokenV2(): string | null {
+  const config = readConfig();
+  if (config?.auth?.type === "token_v2") {
+    return config.auth.token_v2;
+  }
+  return null;
+}
+
 export function getAuthType(): AuthType {
   if (process.env.NOTION_TOKEN) return "integration";
   const config = readConfig();
   if (config?.auth?.type === "oauth") return "oauth";
+  if (config?.auth?.type === "token_v2") return "token_v2";
   return "none";
 }

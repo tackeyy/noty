@@ -7,8 +7,10 @@ import {
   writeConfig,
   clearAuthConfig,
   getOAuthToken,
+  getTokenV2,
   getAuthType,
   type OAuthConfig,
+  type TokenV2Config,
 } from "../auth-config.js";
 
 const TEST_DIR = join(tmpdir(), `noty-test-auth-config-${process.pid}`);
@@ -40,7 +42,7 @@ describe("auth-config", () => {
       };
       writeFileSync(join(TEST_DIR, "config.json"), JSON.stringify({ auth }));
       const config = readConfig();
-      expect(config?.auth?.access_token).toBe("token-abc");
+      expect(config?.auth?.type === "oauth" ? config.auth.access_token : null).toBe("token-abc");
     });
 
     it("returns null for invalid JSON", () => {
@@ -60,8 +62,9 @@ describe("auth-config", () => {
       };
       writeConfig({ auth });
       const config = readConfig();
-      expect(config?.auth?.access_token).toBe("secret-token");
-      expect(config?.auth?.workspace_name).toBe("My WS");
+      const oauthAuth = config?.auth?.type === "oauth" ? config.auth : null;
+      expect(oauthAuth?.access_token).toBe("secret-token");
+      expect(oauthAuth?.workspace_name).toBe("My WS");
     });
 
     it("creates parent directories if needed", () => {
@@ -69,7 +72,7 @@ describe("auth-config", () => {
       process.env.NOTY_CONFIG_DIR = nestedDir;
       writeConfig({ auth: { type: "oauth", access_token: "t", bot_id: "b", workspace_id: "w", workspace_name: "n" } });
       const config = readConfig();
-      expect(config?.auth?.access_token).toBe("t");
+      expect(config?.auth?.type === "oauth" ? config.auth.access_token : null).toBe("t");
     });
   });
 
@@ -132,6 +135,42 @@ describe("auth-config", () => {
         auth: { type: "oauth", access_token: "oauth_token", bot_id: "b", workspace_id: "w", workspace_name: "n" },
       });
       expect(getAuthType()).toBe("integration");
+    });
+
+    it("returns 'token_v2' when token_v2 config exists and no NOTION_TOKEN", () => {
+      writeConfig({ auth: { type: "token_v2", token_v2: "v2token" } });
+      expect(getAuthType()).toBe("token_v2");
+    });
+
+    it("returns 'integration' when both NOTION_TOKEN and token_v2 config exist", () => {
+      process.env.NOTION_TOKEN = "integration_token";
+      writeConfig({ auth: { type: "token_v2", token_v2: "v2token" } });
+      expect(getAuthType()).toBe("integration");
+    });
+  });
+
+  describe("getTokenV2", () => {
+    it("returns null when no config exists", () => {
+      expect(getTokenV2()).toBeNull();
+    });
+
+    it("returns token_v2 when token_v2 config exists", () => {
+      const auth: TokenV2Config = { type: "token_v2", token_v2: "my-token-v2-value" };
+      writeConfig({ auth });
+      expect(getTokenV2()).toBe("my-token-v2-value");
+    });
+
+    it("returns null when auth type is oauth (not token_v2)", () => {
+      writeConfig({
+        auth: { type: "oauth", access_token: "tok", bot_id: "b", workspace_id: "w", workspace_name: "n" },
+      });
+      expect(getTokenV2()).toBeNull();
+    });
+
+    it("returns null after clearAuthConfig", () => {
+      writeConfig({ auth: { type: "token_v2", token_v2: "v2tok" } });
+      clearAuthConfig();
+      expect(getTokenV2()).toBeNull();
     });
   });
 });

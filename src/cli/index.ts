@@ -9,6 +9,7 @@ import {
   writeConfig,
   clearAuthConfig,
   getOAuthToken,
+  getTokenV2,
   getAuthType,
 } from "../lib/auth-config.js";
 import {
@@ -33,13 +34,14 @@ function resolveContent(opts: { content?: string; contentFile?: string }): strin
 
 function createClientFromEnv(): NotyClient {
   const token = process.env.NOTION_TOKEN ?? getOAuthToken();
-  if (!token) {
-    console.error(
-      "Error: No authentication configured. Set NOTION_TOKEN or run 'noty auth login'",
-    );
-    process.exit(1);
-  }
-  return new NotyClient({ token });
+  if (token) return new NotyClient({ token });
+  const tokenV2 = getTokenV2();
+  if (tokenV2) return new NotyClient({ tokenV2 });
+  console.error(
+    "Error: No authentication configured. Set NOTION_TOKEN, run 'noty auth login', or run 'noty auth set-cookie <token_v2>'",
+  );
+  process.exit(1);
+  return undefined as never;
 }
 
 function jsonOutput(data: unknown): void {
@@ -69,6 +71,22 @@ export function createProgram(injectedClient?: NotyClient): Command {
 
   // --- auth ---
   const auth = program.command("auth").description("Authentication commands");
+
+  auth
+    .command("set-cookie <token_v2>")
+    .description("Save Notion browser session token (token_v2 cookie) for authentication")
+    .action((tokenV2: string) => {
+      if (!tokenV2 || tokenV2.trim() === "") {
+        console.error("Error: token_v2 value is required");
+        process.exit(1);
+        return;
+      }
+      writeConfig({
+        ...readConfig(),
+        auth: { type: "token_v2", token_v2: tokenV2.trim() },
+      });
+      console.log("認証を設定しました (token_v2)");
+    });
 
   auth
     .command("login")
@@ -139,15 +157,23 @@ export function createProgram(injectedClient?: NotyClient): Command {
         }
       } else if (authType === "oauth") {
         const config = readConfig();
-        const auth = config?.auth;
+        const oauthAuth = config?.auth?.type === "oauth" ? config.auth : undefined;
         if (mode === "json") {
-          jsonOutput({ type: "oauth", workspace: auth?.workspace_name, bot_id: auth?.bot_id });
+          jsonOutput({ type: "oauth", workspace: oauthAuth?.workspace_name, bot_id: oauthAuth?.bot_id });
         } else if (mode === "plain") {
-          console.log(`oauth\t${auth?.workspace_name ?? ""}\t${auth?.bot_id ?? ""}`);
+          console.log(`oauth\t${oauthAuth?.workspace_name ?? ""}\t${oauthAuth?.bot_id ?? ""}`);
         } else {
           console.log("Auth type:  OAuth");
-          console.log(`Workspace:  ${auth?.workspace_name ?? "(unknown)"}`);
-          console.log(`Bot ID:     ${auth?.bot_id ?? "(unknown)"}`);
+          console.log(`Workspace:  ${oauthAuth?.workspace_name ?? "(unknown)"}`);
+          console.log(`Bot ID:     ${oauthAuth?.bot_id ?? "(unknown)"}`);
+        }
+      } else if (authType === "token_v2") {
+        if (mode === "json") {
+          jsonOutput({ type: "token_v2", method: "cookie (token_v2)" });
+        } else if (mode === "plain") {
+          console.log("token_v2");
+        } else {
+          console.log("Auth type:  cookie (token_v2)");
         }
       } else {
         if (mode === "json") {
@@ -155,21 +181,24 @@ export function createProgram(injectedClient?: NotyClient): Command {
         } else if (mode === "plain") {
           console.log("none");
         } else {
-          console.log("Not authenticated. Run 'noty auth login' or set NOTION_TOKEN.");
+          console.log("Not authenticated. Run 'noty auth login', 'noty auth set-cookie <token_v2>', or set NOTION_TOKEN.");
         }
       }
     });
 
   auth
     .command("logout")
-    .description("Remove saved OAuth token")
+    .description("Remove saved OAuth token or token_v2 cookie")
     .action(() => {
       const authType = getAuthType();
       if (authType === "oauth") {
         clearAuthConfig();
         console.log("Logged out. OAuth token removed.");
+      } else if (authType === "token_v2") {
+        clearAuthConfig();
+        console.log("Logged out. token_v2 cookie removed.");
       } else if (authType === "integration") {
-        console.log("Using NOTION_TOKEN (environment variable). No OAuth token to remove.");
+        console.log("Using NOTION_TOKEN (environment variable). No saved token to remove.");
       } else {
         console.log("Not authenticated.");
       }

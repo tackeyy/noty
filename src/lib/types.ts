@@ -1,5 +1,6 @@
 export interface NotyClientOptions {
-  token: string;
+  token?: string;
+  tokenV2?: string;
 }
 
 export interface SearchResult {

@@ -621,7 +621,7 @@ describe("CLI commands", () => {
       await program.parseAsync(["node", "noty", "auth", "test"]);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error: No authentication configured. Set NOTION_TOKEN or run 'noty auth login'",
+        expect.stringContaining("No authentication configured"),
       );
       expect(processExitSpy).toHaveBeenCalledWith(1);
 
@@ -758,6 +758,79 @@ describe("CLI commands", () => {
     it("prints 'Not authenticated' when no auth configured", async () => {
       await runCmd(mockClient, ["auth", "logout"]);
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Not authenticated"));
+    });
+  });
+
+  describe("auth set-cookie", () => {
+    const testConfigDir = join(tmpdir(), `noty-auth-set-cookie-${Date.now()}`);
+
+    beforeEach(() => {
+      mkdirSync(testConfigDir, { recursive: true });
+      process.env.NOTY_CONFIG_DIR = testConfigDir;
+      delete process.env.NOTION_TOKEN;
+    });
+
+    afterEach(() => {
+      rmSync(testConfigDir, { recursive: true, force: true });
+      delete process.env.NOTY_CONFIG_DIR;
+    });
+
+    it("saves token_v2 to config and prints confirmation", async () => {
+      await runCmd(mockClient, ["auth", "set-cookie", "v2-token-value-abc"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("認証を設定しました"));
+    });
+
+    it("exits with code 1 when no token_v2 argument is given", async () => {
+      await runCmd(mockClient, ["auth", "set-cookie"]);
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("auth status token_v2", () => {
+    const testConfigDir = join(tmpdir(), `noty-auth-status-v2-${Date.now()}`);
+
+    beforeEach(() => {
+      mkdirSync(testConfigDir, { recursive: true });
+      process.env.NOTY_CONFIG_DIR = testConfigDir;
+      delete process.env.NOTION_TOKEN;
+    });
+
+    afterEach(() => {
+      rmSync(testConfigDir, { recursive: true, force: true });
+      delete process.env.NOTY_CONFIG_DIR;
+    });
+
+    it("shows 'cookie (token_v2)' when token_v2 config exists", async () => {
+      writeFileSync(
+        join(testConfigDir, "config.json"),
+        JSON.stringify({ auth: { type: "token_v2", token_v2: "v2tok" } }),
+      );
+      await runCmd(mockClient, ["auth", "status"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("cookie (token_v2)"));
+    });
+  });
+
+  describe("auth logout token_v2", () => {
+    const testConfigDir = join(tmpdir(), `noty-auth-logout-v2-${Date.now()}`);
+
+    beforeEach(() => {
+      mkdirSync(testConfigDir, { recursive: true });
+      process.env.NOTY_CONFIG_DIR = testConfigDir;
+      delete process.env.NOTION_TOKEN;
+    });
+
+    afterEach(() => {
+      rmSync(testConfigDir, { recursive: true, force: true });
+      delete process.env.NOTY_CONFIG_DIR;
+    });
+
+    it("removes token_v2 config and prints confirmation", async () => {
+      writeFileSync(
+        join(testConfigDir, "config.json"),
+        JSON.stringify({ auth: { type: "token_v2", token_v2: "v2tok" } }),
+      );
+      await runCmd(mockClient, ["auth", "logout"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Logged out"));
     });
   });
 

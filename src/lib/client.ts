@@ -47,10 +47,22 @@ export class NotyClient {
   private client: Client;
 
   constructor(opts: NotyClientOptions) {
-    if (!opts.token) {
+    if (!opts.token && !opts.tokenV2) {
       throw new Error("Notion token is required");
     }
-    this.client = new Client({ auth: opts.token });
+    if (opts.tokenV2) {
+      const tokenV2 = opts.tokenV2;
+      this.client = new Client({
+        fetch: async (url, init) => {
+          const headers = new Headers(init?.headers as HeadersInit | undefined);
+          headers.delete("Authorization");
+          headers.set("Cookie", `token_v2=${tokenV2}`);
+          return fetch(url, { ...(init as RequestInit), headers });
+        },
+      });
+    } else {
+      this.client = new Client({ auth: opts.token });
+    }
   }
 
   async search(
