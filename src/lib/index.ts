@@ -1,4 +1,6 @@
-export { NotyClient } from "./client.js";
+export { NotyClient, createClientFromEnv } from "./client.js";
+export { InternalNotionClient } from "./internal-client.js";
+export type { NotionClientInterface } from "./notion-client-interface.js";
 export type {
   NotyClientOptions,
   SearchResult,

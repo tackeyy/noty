@@ -2,7 +2,8 @@
 import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { NotyClient } from "../lib/client.js";
+import { createClientFromEnv } from "../lib/client.js";
+import type { NotionClientInterface } from "../lib/notion-client-interface.js";
 import { readStdin } from "./stdin.js";
 import {
   readConfig,
@@ -32,23 +33,11 @@ function resolveContent(opts: { content?: string; contentFile?: string }): strin
   return opts.content;
 }
 
-function createClientFromEnv(): NotyClient {
-  const token = process.env.NOTION_TOKEN ?? getOAuthToken();
-  if (token) return new NotyClient({ token });
-  const tokenV2 = process.env.NOTION_TOKEN_V2 ?? getTokenV2();
-  if (tokenV2) return new NotyClient({ tokenV2 });
-  console.error(
-    "Error: No authentication configured. Set NOTION_TOKEN, NOTION_TOKEN_V2, run 'noty auth login', or run 'noty auth set-cookie <token_v2>'",
-  );
-  process.exit(1);
-  return undefined as never;
-}
-
 function jsonOutput(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
-export function createProgram(injectedClient?: NotyClient): Command {
+export function createProgram(injectedClient?: NotionClientInterface): Command {
   const program = new Command();
 
   program
@@ -65,8 +54,18 @@ export function createProgram(injectedClient?: NotyClient): Command {
     return "human";
   }
 
-  function getClient(): NotyClient {
-    return injectedClient ?? createClientFromEnv();
+  function getClient(): NotionClientInterface {
+    if (injectedClient) return injectedClient;
+    try {
+      return createClientFromEnv({
+        getIntegrationToken: () => process.env.NOTION_TOKEN ?? getOAuthToken(),
+        getTokenV2: () => process.env.NOTION_TOKEN_V2 ?? getTokenV2(),
+      });
+    } catch (error: any) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+      return undefined as never;
+    }
   }
 
   // --- auth ---

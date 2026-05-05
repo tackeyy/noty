@@ -4,6 +4,9 @@ import { blocksToMarkdown } from "./blocks-to-markdown.js";
 import { markdownToBlocks } from "./markdown-to-blocks.js";
 import { buildProperties } from "./property-builder.js";
 import { withRetry } from "./retry.js";
+import { getOAuthToken, getTokenV2 } from "./auth-config.js";
+import { InternalNotionClient } from "./internal-client.js";
+import type { NotionClientInterface } from "./notion-client-interface.js";
 import type {
   NotyClientOptions,
   SearchResult,
@@ -43,7 +46,7 @@ function pageToResult(page: Record<string, any>): PageResult {
   };
 }
 
-export class NotyClient {
+export class NotyClient implements NotionClientInterface {
   private client: Client;
 
   constructor(opts: NotyClientOptions) {
@@ -470,4 +473,35 @@ export class NotyClient {
       workspaceId: res.bot?.owner?.workspace ? "true" : res.id,
     };
   }
+}
+
+export interface ClientFactoryDeps {
+  getIntegrationToken?: () => string | null;
+  getTokenV2?: () => string | null;
+  fetchImpl?: typeof fetch;
+}
+
+export function createClientFromEnv(
+  deps: ClientFactoryDeps = {},
+): NotionClientInterface {
+  const getIntegrationToken =
+    deps.getIntegrationToken ?? (() => process.env.NOTION_TOKEN ?? getOAuthToken());
+  const getCookieToken = deps.getTokenV2 ?? (() => process.env.NOTION_TOKEN_V2 ?? getTokenV2());
+
+  const token = getIntegrationToken();
+  if (token) {
+    return new NotyClient({ token });
+  }
+
+  const tokenV2 = getCookieToken();
+  if (tokenV2) {
+    return new InternalNotionClient({
+      tokenV2,
+      fetchImpl: deps.fetchImpl,
+    });
+  }
+
+  throw new Error(
+    "No authentication configured. Set NOTION_TOKEN, NOTION_TOKEN_V2, run 'noty auth login', or run 'noty auth set-cookie <token_v2>'",
+  );
 }

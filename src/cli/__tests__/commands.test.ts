@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { createProgram, checkIsMain } from "../index.js";
-import type { NotyClient } from "../../lib/client.js";
+import type { NotionClientInterface } from "../../lib/notion-client-interface.js";
 import { symlinkSync, unlinkSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // --- Mock NotyClient factory ---
 
-function createMockClient(): NotyClient {
+function createMockClient(): NotionClientInterface {
   return {
     authTest: vi.fn().mockResolvedValue({
       botId: "bot-id-1",
@@ -119,12 +119,12 @@ function createMockClient(): NotyClient {
         avatarUrl: null,
       },
     ]),
-  } as unknown as NotyClient;
+  } as unknown as NotionClientInterface;
 }
 
 // --- Helpers ---
 
-async function runCmd(client: NotyClient, args: string[]): Promise<void> {
+async function runCmd(client: NotionClientInterface, args: string[]): Promise<void> {
   const program = createProgram(client);
   // exitOverride prevents commander from calling process.exit on errors
   program.exitOverride();
@@ -134,7 +134,7 @@ async function runCmd(client: NotyClient, args: string[]): Promise<void> {
 // --- Tests ---
 
 describe("CLI commands", () => {
-  let mockClient: NotyClient;
+  let mockClient: NotionClientInterface;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let processExitSpy: MockInstance;
