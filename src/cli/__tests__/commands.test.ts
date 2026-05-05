@@ -721,6 +721,18 @@ describe("CLI commands", () => {
       expect(parsed.workspace).toBe("My WS");
       if (savedToken !== undefined) process.env.NOTION_TOKEN = savedToken;
     });
+
+    it("shows NOTION_TOKEN_V2 env usage when NOTION_TOKEN_V2 is set", async () => {
+      const savedToken = process.env.NOTION_TOKEN;
+      const savedV2 = process.env.NOTION_TOKEN_V2;
+      delete process.env.NOTION_TOKEN;
+      process.env.NOTION_TOKEN_V2 = "env-v2-token-value";
+      await runCmd(mockClient, ["auth", "status"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("NOTION_TOKEN_V2"));
+      if (savedToken !== undefined) process.env.NOTION_TOKEN = savedToken;
+      if (savedV2 !== undefined) process.env.NOTION_TOKEN_V2 = savedV2;
+      else delete process.env.NOTION_TOKEN_V2;
+    });
   });
 
   describe("auth logout", () => {

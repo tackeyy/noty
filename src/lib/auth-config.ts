@@ -19,7 +19,7 @@ export interface NotyConfig {
   auth?: OAuthConfig | TokenV2Config;
 }
 
-export type AuthType = "integration" | "oauth" | "token_v2" | "none";
+export type AuthType = "integration" | "oauth" | "token_v2_env" | "token_v2" | "none";
 
 export function getConfigDir(): string {
   return process.env.NOTY_CONFIG_DIR ?? join(homedir(), ".config", "noty");
@@ -72,6 +72,7 @@ export function getAuthType(): AuthType {
   if (process.env.NOTION_TOKEN) return "integration";
   const config = readConfig();
   if (config?.auth?.type === "oauth") return "oauth";
+  if (process.env.NOTION_TOKEN_V2) return "token_v2_env";
   if (config?.auth?.type === "token_v2") return "token_v2";
   return "none";
 }

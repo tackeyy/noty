@@ -35,10 +35,10 @@ function resolveContent(opts: { content?: string; contentFile?: string }): strin
 function createClientFromEnv(): NotyClient {
   const token = process.env.NOTION_TOKEN ?? getOAuthToken();
   if (token) return new NotyClient({ token });
-  const tokenV2 = getTokenV2();
+  const tokenV2 = process.env.NOTION_TOKEN_V2 ?? getTokenV2();
   if (tokenV2) return new NotyClient({ tokenV2 });
   console.error(
-    "Error: No authentication configured. Set NOTION_TOKEN, run 'noty auth login', or run 'noty auth set-cookie <token_v2>'",
+    "Error: No authentication configured. Set NOTION_TOKEN, NOTION_TOKEN_V2, run 'noty auth login', or run 'noty auth set-cookie <token_v2>'",
   );
   process.exit(1);
   return undefined as never;
@@ -166,6 +166,14 @@ export function createProgram(injectedClient?: NotyClient): Command {
           console.log("Auth type:  OAuth");
           console.log(`Workspace:  ${oauthAuth?.workspace_name ?? "(unknown)"}`);
           console.log(`Bot ID:     ${oauthAuth?.bot_id ?? "(unknown)"}`);
+        }
+      } else if (authType === "token_v2_env") {
+        if (mode === "json") {
+          jsonOutput({ type: "token_v2", source: "NOTION_TOKEN_V2" });
+        } else if (mode === "plain") {
+          console.log("token_v2_env\tNOTION_TOKEN_V2");
+        } else {
+          console.log("Auth type:  cookie (token_v2) — NOTION_TOKEN_V2");
         }
       } else if (authType === "token_v2") {
         if (mode === "json") {

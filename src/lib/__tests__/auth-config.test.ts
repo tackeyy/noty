@@ -20,11 +20,13 @@ describe("auth-config", () => {
     mkdirSync(TEST_DIR, { recursive: true });
     process.env.NOTY_CONFIG_DIR = TEST_DIR;
     delete process.env.NOTION_TOKEN;
+    delete process.env.NOTION_TOKEN_V2;
   });
 
   afterEach(() => {
     rmSync(TEST_DIR, { recursive: true, force: true });
     delete process.env.NOTY_CONFIG_DIR;
+    delete process.env.NOTION_TOKEN_V2;
   });
 
   describe("readConfig", () => {
@@ -146,6 +148,31 @@ describe("auth-config", () => {
       process.env.NOTION_TOKEN = "integration_token";
       writeConfig({ auth: { type: "token_v2", token_v2: "v2token" } });
       expect(getAuthType()).toBe("integration");
+    });
+
+    it("returns 'token_v2_env' when NOTION_TOKEN_V2 env is set and no NOTION_TOKEN or OAuth", () => {
+      process.env.NOTION_TOKEN_V2 = "env-v2-token";
+      expect(getAuthType()).toBe("token_v2_env");
+    });
+
+    it("returns 'integration' when both NOTION_TOKEN and NOTION_TOKEN_V2 env are set", () => {
+      process.env.NOTION_TOKEN = "int-token";
+      process.env.NOTION_TOKEN_V2 = "env-v2-token";
+      expect(getAuthType()).toBe("integration");
+    });
+
+    it("returns 'oauth' when oauth config exists even if NOTION_TOKEN_V2 env is set", () => {
+      process.env.NOTION_TOKEN_V2 = "env-v2-token";
+      writeConfig({
+        auth: { type: "oauth", access_token: "oauth_tok", bot_id: "b", workspace_id: "w", workspace_name: "n" },
+      });
+      expect(getAuthType()).toBe("oauth");
+    });
+
+    it("returns 'token_v2_env' over config token_v2 when NOTION_TOKEN_V2 env is set", () => {
+      process.env.NOTION_TOKEN_V2 = "env-v2-token";
+      writeConfig({ auth: { type: "token_v2", token_v2: "config-v2-token" } });
+      expect(getAuthType()).toBe("token_v2_env");
     });
   });
 

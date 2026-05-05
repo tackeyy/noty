@@ -42,9 +42,26 @@ In Notion, open any page or database you want noty to access, click **...** > **
 export NOTION_TOKEN="ntn_..."
 ```
 
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `NOTION_TOKEN` | Integration Token (official API, requires integration setup) |
+| `NOTION_TOKEN_V2` | Browser session cookie token (no integration needed, see below) |
+
+**Authentication priority:** `NOTION_TOKEN` → OAuth config → `NOTION_TOKEN_V2` → saved `set-cookie` config → error
+
 ### Alternative: Use browser session token (token_v2)
 
-If you want to access your own private pages without registering a Notion integration, you can use your browser session cookie (`token_v2`). This method does not require any integration setup.
+If you want to access your own private pages without registering a Notion integration, you can use your browser session cookie (`token_v2`).
+
+**Option A — environment variable (recommended for scripts):**
+
+```bash
+export NOTION_TOKEN_V2="<token_v2-value>"
+```
+
+**Option B — saved config (recommended for interactive use):**
 
 1. Open [notion.so](https://www.notion.so) in your browser and log in
 2. Open DevTools → **Application** → **Cookies** → find `token_v2` and copy its value
@@ -61,7 +78,7 @@ noty auth status           # Show current auth type
 noty auth logout           # Remove saved token
 ```
 
-> **Note:** The `token_v2` cookie expires when you log out of Notion in the browser. Re-run `noty auth set-cookie` if authentication stops working.
+> **Note:** The `token_v2` cookie expires when you log out of Notion in the browser. Re-run `noty auth set-cookie` (or re-export `NOTION_TOKEN_V2`) if authentication stops working.
 
 ## CLI Commands
 
