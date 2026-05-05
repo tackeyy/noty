@@ -609,9 +609,11 @@ describe("CLI commands", () => {
       expect(processExitSpy).toHaveBeenCalledWith(1);
     });
 
-    it("exits with code 1 when NOTION_TOKEN is not set", async () => {
+    it("exits with code 1 when no auth is configured", async () => {
       const savedToken = process.env.NOTION_TOKEN;
+      const savedConfigDir = process.env.NOTY_CONFIG_DIR;
       delete process.env.NOTION_TOKEN;
+      process.env.NOTY_CONFIG_DIR = join(tmpdir(), `noty-no-auth-${Date.now()}`);
 
       // Use a program without injected client so createClientFromEnv() is called
       const program = createProgram();
@@ -619,13 +621,13 @@ describe("CLI commands", () => {
       await program.parseAsync(["node", "noty", "auth", "test"]);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error: NOTION_TOKEN environment variable is not set",
+        "Error: No authentication configured. Set NOTION_TOKEN or run 'noty auth login'",
       );
       expect(processExitSpy).toHaveBeenCalledWith(1);
 
-      if (savedToken !== undefined) {
-        process.env.NOTION_TOKEN = savedToken;
-      }
+      if (savedToken !== undefined) process.env.NOTION_TOKEN = savedToken;
+      if (savedConfigDir !== undefined) process.env.NOTY_CONFIG_DIR = savedConfigDir;
+      else delete process.env.NOTY_CONFIG_DIR;
     });
 
     it("--parent-type に不正な値を渡すと exit(1) する", async () => {
@@ -652,6 +654,148 @@ describe("CLI commands", () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith("Error: Unauthorized");
       expect(processExitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("auth status", () => {
+    const testConfigDir = join(tmpdir(), `noty-auth-status-${Date.now()}`);
+
+    beforeEach(() => {
+      mkdirSync(testConfigDir, { recursive: true });
+      process.env.NOTY_CONFIG_DIR = testConfigDir;
+    });
+
+    afterEach(() => {
+      rmSync(testConfigDir, { recursive: true, force: true });
+      delete process.env.NOTY_CONFIG_DIR;
+    });
+
+    it("shows 'not authenticated' when no auth configured and no NOTION_TOKEN", async () => {
+      const savedToken = process.env.NOTION_TOKEN;
+      delete process.env.NOTION_TOKEN;
+      await runCmd(mockClient, ["auth", "status"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Not authenticated"),
+      );
+      if (savedToken !== undefined) process.env.NOTION_TOKEN = savedToken;
+    });
+
+    it("shows integration type when NOTION_TOKEN is set", async () => {
+      process.env.NOTION_TOKEN = "secret_integration_token";
+      await runCmd(mockClient, ["auth", "status"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Integration Token"),
+      );
+      delete process.env.NOTION_TOKEN;
+    });
+
+    it("shows oauth info when oauth config exists", async () => {
+      const savedToken = process.env.NOTION_TOKEN;
+      delete process.env.NOTION_TOKEN;
+      writeFileSync(
+        join(testConfigDir, "config.json"),
+        JSON.stringify({
+          auth: { type: "oauth", access_token: "tok", bot_id: "b1", workspace_id: "ws1", workspace_name: "My WS" },
+        }),
+      );
+      await runCmd(mockClient, ["auth", "status"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("OAuth"));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("My WS"));
+      if (savedToken !== undefined) process.env.NOTION_TOKEN = savedToken;
+    });
+
+    it("outputs json with --json flag when oauth configured", async () => {
+      const savedToken = process.env.NOTION_TOKEN;
+      delete process.env.NOTION_TOKEN;
+      writeFileSync(
+        join(testConfigDir, "config.json"),
+        JSON.stringify({
+          auth: { type: "oauth", access_token: "tok", bot_id: "b1", workspace_id: "ws1", workspace_name: "My WS" },
+        }),
+      );
+      await runCmd(mockClient, ["--json", "auth", "status"]);
+      const jsonArg = consoleLogSpy.mock.calls.find((c) => typeof c[0] === "string" && (c[0] as string).includes('"type"'));
+      expect(jsonArg).toBeDefined();
+      const parsed = JSON.parse(jsonArg![0] as string);
+      expect(parsed.type).toBe("oauth");
+      expect(parsed.workspace).toBe("My WS");
+      if (savedToken !== undefined) process.env.NOTION_TOKEN = savedToken;
+    });
+  });
+
+  describe("auth logout", () => {
+    const testConfigDir = join(tmpdir(), `noty-auth-logout-${Date.now()}`);
+
+    beforeEach(() => {
+      mkdirSync(testConfigDir, { recursive: true });
+      process.env.NOTY_CONFIG_DIR = testConfigDir;
+      delete process.env.NOTION_TOKEN;
+    });
+
+    afterEach(() => {
+      rmSync(testConfigDir, { recursive: true, force: true });
+      delete process.env.NOTY_CONFIG_DIR;
+    });
+
+    it("removes oauth token and prints confirmation", async () => {
+      writeFileSync(
+        join(testConfigDir, "config.json"),
+        JSON.stringify({
+          auth: { type: "oauth", access_token: "tok", bot_id: "b", workspace_id: "w", workspace_name: "WS" },
+        }),
+      );
+      await runCmd(mockClient, ["auth", "logout"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Logged out"));
+    });
+
+    it("prints appropriate message when using NOTION_TOKEN", async () => {
+      process.env.NOTION_TOKEN = "secret_int";
+      await runCmd(mockClient, ["auth", "logout"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("NOTION_TOKEN"));
+      delete process.env.NOTION_TOKEN;
+    });
+
+    it("prints 'Not authenticated' when no auth configured", async () => {
+      await runCmd(mockClient, ["auth", "logout"]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Not authenticated"));
+    });
+  });
+
+  describe("auth login errors", () => {
+    it("exits with code 1 when NOTION_OAUTH_CLIENT_ID is missing", async () => {
+      const savedCid = process.env.NOTION_OAUTH_CLIENT_ID;
+      const savedCs = process.env.NOTION_OAUTH_CLIENT_SECRET;
+      delete process.env.NOTION_OAUTH_CLIENT_ID;
+      process.env.NOTION_OAUTH_CLIENT_SECRET = "secret";
+
+      await runCmd(mockClient, ["auth", "login"]);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("NOTION_OAUTH_CLIENT_ID"),
+      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      if (savedCid !== undefined) process.env.NOTION_OAUTH_CLIENT_ID = savedCid;
+      if (savedCs !== undefined) process.env.NOTION_OAUTH_CLIENT_SECRET = savedCs;
+      else delete process.env.NOTION_OAUTH_CLIENT_SECRET;
+    });
+
+    it("exits with code 1 when NOTION_OAUTH_CLIENT_SECRET is missing", async () => {
+      const savedCid = process.env.NOTION_OAUTH_CLIENT_ID;
+      const savedCs = process.env.NOTION_OAUTH_CLIENT_SECRET;
+      process.env.NOTION_OAUTH_CLIENT_ID = "client-id";
+      delete process.env.NOTION_OAUTH_CLIENT_SECRET;
+
+      await runCmd(mockClient, ["auth", "login"]);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("NOTION_OAUTH_CLIENT_SECRET"),
+      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      if (savedCid !== undefined) process.env.NOTION_OAUTH_CLIENT_ID = savedCid;
+      else delete process.env.NOTION_OAUTH_CLIENT_ID;
+      if (savedCs !== undefined) process.env.NOTION_OAUTH_CLIENT_SECRET = savedCs;
     });
   });
 });

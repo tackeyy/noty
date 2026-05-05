@@ -1,8 +1,22 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { NotyClient } from "../lib/client.js";
 import { readStdin } from "./stdin.js";
+import {
+  readConfig,
+  writeConfig,
+  clearAuthConfig,
+  getOAuthToken,
+  getAuthType,
+} from "../lib/auth-config.js";
+import {
+  buildAuthorizationUrl,
+  exchangeCodeForToken,
+  waitForOAuthCallback,
+  findFreePort,
+} from "../lib/oauth.js";
 
 function resolveContent(opts: { content?: string; contentFile?: string }): string | undefined {
   if (opts.content && opts.contentFile) {
@@ -18,9 +32,11 @@ function resolveContent(opts: { content?: string; contentFile?: string }): strin
 }
 
 function createClientFromEnv(): NotyClient {
-  const token = process.env.NOTION_TOKEN;
+  const token = process.env.NOTION_TOKEN ?? getOAuthToken();
   if (!token) {
-    console.error("Error: NOTION_TOKEN environment variable is not set");
+    console.error(
+      "Error: No authentication configured. Set NOTION_TOKEN or run 'noty auth login'",
+    );
     process.exit(1);
   }
   return new NotyClient({ token });
@@ -53,6 +69,111 @@ export function createProgram(injectedClient?: NotyClient): Command {
 
   // --- auth ---
   const auth = program.command("auth").description("Authentication commands");
+
+  auth
+    .command("login")
+    .description("Authenticate with Notion via OAuth (opens browser)")
+    .action(async () => {
+      const clientId = process.env.NOTION_OAUTH_CLIENT_ID;
+      const clientSecret = process.env.NOTION_OAUTH_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        console.error(
+          "Error: NOTION_OAUTH_CLIENT_ID and NOTION_OAUTH_CLIENT_SECRET must be set.\n" +
+          "Create a public Notion integration at https://www.notion.so/my-integrations",
+        );
+        process.exit(1);
+        return;
+      }
+      try {
+        const port = await findFreePort();
+        const redirectUri = `http://localhost:${port}/callback`;
+        const authUrl = buildAuthorizationUrl(clientId, redirectUri);
+
+        console.log(`\nOpening browser for Notion OAuth...\n${authUrl}\n`);
+        try {
+          const openCmd =
+            process.platform === "darwin" ? `open "${authUrl}"` :
+            process.platform === "win32" ? `start "" "${authUrl}"` :
+            `xdg-open "${authUrl}"`;
+          execSync(openCmd, { stdio: "ignore" });
+        } catch {
+          console.log("Could not open browser automatically. Please visit the URL above.");
+        }
+
+        console.log("Waiting for authentication...");
+        const code = await waitForOAuthCallback(port);
+        const tokenRes = await exchangeCodeForToken(code, clientId, clientSecret, redirectUri);
+
+        writeConfig({
+          ...readConfig(),
+          auth: {
+            type: "oauth",
+            access_token: tokenRes.access_token,
+            bot_id: tokenRes.bot_id,
+            workspace_id: tokenRes.workspace_id,
+            workspace_name: tokenRes.workspace_name,
+          },
+        });
+
+        console.log(`\n✓ Authenticated with workspace: ${tokenRes.workspace_name}`);
+      } catch (err: any) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
+  auth
+    .command("status")
+    .description("Show current authentication status")
+    .action(() => {
+      const authType = getAuthType();
+      const mode = getOutputMode();
+
+      if (authType === "integration") {
+        if (mode === "json") {
+          jsonOutput({ type: "integration", source: "NOTION_TOKEN" });
+        } else if (mode === "plain") {
+          console.log("integration\tNOTION_TOKEN");
+        } else {
+          console.log("Auth type:  Integration Token (NOTION_TOKEN)");
+        }
+      } else if (authType === "oauth") {
+        const config = readConfig();
+        const auth = config?.auth;
+        if (mode === "json") {
+          jsonOutput({ type: "oauth", workspace: auth?.workspace_name, bot_id: auth?.bot_id });
+        } else if (mode === "plain") {
+          console.log(`oauth\t${auth?.workspace_name ?? ""}\t${auth?.bot_id ?? ""}`);
+        } else {
+          console.log("Auth type:  OAuth");
+          console.log(`Workspace:  ${auth?.workspace_name ?? "(unknown)"}`);
+          console.log(`Bot ID:     ${auth?.bot_id ?? "(unknown)"}`);
+        }
+      } else {
+        if (mode === "json") {
+          jsonOutput({ type: "none" });
+        } else if (mode === "plain") {
+          console.log("none");
+        } else {
+          console.log("Not authenticated. Run 'noty auth login' or set NOTION_TOKEN.");
+        }
+      }
+    });
+
+  auth
+    .command("logout")
+    .description("Remove saved OAuth token")
+    .action(() => {
+      const authType = getAuthType();
+      if (authType === "oauth") {
+        clearAuthConfig();
+        console.log("Logged out. OAuth token removed.");
+      } else if (authType === "integration") {
+        console.log("Using NOTION_TOKEN (environment variable). No OAuth token to remove.");
+      } else {
+        console.log("Not authenticated.");
+      }
+    });
 
   auth
     .command("test")
