@@ -3,3 +3,5 @@ dist/
 .env
 .claude/
 *.tsbuildinfo
+.DS_Store
+CleanShot*.png
