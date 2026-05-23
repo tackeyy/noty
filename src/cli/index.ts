@@ -621,6 +621,64 @@ export function createProgram(injectedClient?: NotionClientInterface): Command {
       }
     });
 
+  // --- files ---
+  const files = program.command("files").description("File upload operations");
+
+  files
+    .command("upload <file_path>")
+    .description("Upload a file to Notion via Direct Upload")
+    .action(async (filePath: string) => {
+      try {
+        const client = getClient();
+        const mode = getOutputMode();
+
+        const result = await client.uploadFile(filePath);
+
+        if (mode === "json") {
+          jsonOutput(result);
+        } else if (mode === "plain") {
+          console.log(`${result.id}\t${result.status}\t${result.filename}`);
+        } else {
+          console.log(`File uploaded: ${result.filename}`);
+          console.log(`  ID:      ${result.id}`);
+          console.log(`  Status:  ${result.status}`);
+          if (result.expiryTime) console.log(`  Expires: ${result.expiryTime}`);
+        }
+      } catch (err: any) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
+  // --- pages attach-file ---
+  pages
+    .command("attach-file <page_id> <file_path>")
+    .description("Upload a file and attach it to a Notion page as a file block")
+    .option("--caption <text>", "Caption text for the file block")
+    .action(async (pageId: string, filePath: string, opts: { caption?: string }) => {
+      try {
+        const client = getClient();
+        const mode = getOutputMode();
+
+        const result = await client.attachFileToPage(pageId, filePath, {
+          caption: opts.caption,
+        });
+
+        if (mode === "json") {
+          jsonOutput(result);
+        } else if (mode === "plain") {
+          console.log(`${result.id}\t${result.title}\t${result.url}`);
+        } else {
+          console.log(`File attached to page: ${result.title}`);
+          console.log(`  Page ID: ${result.id}`);
+          console.log(`  URL:     ${result.url}`);
+        }
+      } catch (err: any) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
   return program;
 }
 

@@ -82,3 +82,15 @@ export interface AuthInfo {
   workspaceName: string;
   workspaceId: string;
 }
+
+export interface FileUploadResult {
+  id: string;
+  status: "pending" | "uploaded" | "expired";
+  createdTime: string;
+  expiryTime: string;
+  filename: string;
+}
+
+export interface AttachFileArgs {
+  caption?: string;
+}

@@ -2,8 +2,10 @@ import { blocksToMarkdown } from "./blocks-to-markdown.js";
 import { extractNotionId, toUuid } from "./url-parser.js";
 import type {
   AuthInfo,
+  AttachFileArgs,
   CreatePageArgs,
   DatabaseResult,
+  FileUploadResult,
   NotionComment,
   NotionUser,
   PageResult,
@@ -238,5 +240,17 @@ export class InternalNotionClient implements NotionClientInterface {
 
   async authTest(): Promise<AuthInfo> {
     throw new Error("authTest is not supported with token_v2 internal API client");
+  }
+
+  async uploadFile(_filePath: string): Promise<FileUploadResult> {
+    throw new Error("uploadFile is not supported with token_v2 internal API client. Use NOTION_TOKEN (integration token) instead.");
+  }
+
+  async attachFileToPage(
+    _pageIdOrUrl: string,
+    _filePath: string,
+    _args?: AttachFileArgs,
+  ): Promise<PageResult> {
+    throw new Error("attachFileToPage is not supported with token_v2 internal API client. Use NOTION_TOKEN (integration token) instead.");
   }
 }

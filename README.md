@@ -112,6 +112,9 @@ noty comments list <page_id>           # List page comments
 noty comments add <page_id>            # Add a comment to a page
   --body <text>                        #   Comment text (use '-' for stdin)
 noty users list                        # List workspace users
+noty files upload <file_path>          # Upload a local file to Notion (Direct Upload)
+noty pages attach-file <page_id> <file_path>  # Upload and attach file as a block to a page
+  --caption <text>                     #   Caption text for the file block
 ```
 
 ### Output Formats
@@ -181,6 +184,29 @@ const rows = await client.queryDatabase("db-id", {
   filter: { property: "Status", select: { equals: "Done" } },
 });
 ```
+
+### File Upload
+
+Upload a file and attach it to a Notion page:
+
+```typescript
+import { NotyClient } from "noty";
+
+const client = new NotyClient({ token: process.env.NOTION_TOKEN! });
+
+// Upload a file (returns file_upload_id)
+const upload = await client.uploadFile("/path/to/report.pdf");
+console.log(upload.id);     // file_upload_id
+console.log(upload.status); // "uploaded"
+
+// Upload and attach as a file block to a page
+const page = await client.attachFileToPage("page-id", "/path/to/report.pdf", {
+  caption: "Q1 Report",
+});
+```
+
+> **Note:** File upload requires `NOTION_TOKEN` (integration token). It is not supported with `NOTION_TOKEN_V2` (browser cookie).
+> Maximum file size: 5 MB (single-part upload).
 
 ### Retry
 

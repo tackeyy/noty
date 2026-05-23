@@ -119,6 +119,21 @@ function createMockClient(): NotionClientInterface {
         avatarUrl: null,
       },
     ]),
+    uploadFile: vi.fn().mockResolvedValue({
+      id: "file-upload-id-1",
+      status: "uploaded",
+      createdTime: "2026-01-01T00:00:00.000Z",
+      expiryTime: "2026-01-02T00:00:00.000Z",
+      filename: "test.pdf",
+    }),
+    attachFileToPage: vi.fn().mockResolvedValue({
+      id: "page-id-1",
+      title: "Test Page",
+      url: "https://notion.so/Test-Page",
+      createdTime: "2026-01-01T00:00:00.000Z",
+      lastEditedTime: "2026-01-07T00:00:00.000Z",
+      properties: {},
+    }),
   } as unknown as NotionClientInterface;
 }
 
@@ -881,6 +896,84 @@ describe("CLI commands", () => {
       if (savedCid !== undefined) process.env.NOTION_OAUTH_CLIENT_ID = savedCid;
       else delete process.env.NOTION_OAUTH_CLIENT_ID;
       if (savedCs !== undefined) process.env.NOTION_OAUTH_CLIENT_SECRET = savedCs;
+    });
+  });
+
+  // =========================================================================
+  // files upload
+  // =========================================================================
+  describe("files upload", () => {
+    it("calls uploadFile() and prints ID, status, filename in human mode", async () => {
+      await runCmd(mockClient, ["files", "upload", "/tmp/test.pdf"]);
+      expect(mockClient.uploadFile).toHaveBeenCalledWith("/tmp/test.pdf");
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("file-upload-id-1"));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("uploaded"));
+    });
+
+    it("outputs JSON when --json flag is given", async () => {
+      await runCmd(mockClient, ["--json", "files", "upload", "/tmp/test.pdf"]);
+      const output = consoleLogSpy.mock.calls[0][0] as string;
+      const parsed = JSON.parse(output);
+      expect(parsed.id).toBe("file-upload-id-1");
+      expect(parsed.status).toBe("uploaded");
+    });
+
+    it("outputs TSV when --plain flag is given", async () => {
+      await runCmd(mockClient, ["--plain", "files", "upload", "/tmp/test.pdf"]);
+      const output = consoleLogSpy.mock.calls[0][0] as string;
+      expect(output).toContain("file-upload-id-1");
+      expect(output).toContain("\t");
+    });
+
+    it("prints error and exits when uploadFile() throws", async () => {
+      (mockClient.uploadFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("File not found: /bad/path.pdf"),
+      );
+      await runCmd(mockClient, ["files", "upload", "/bad/path.pdf"]);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("File not found"));
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // =========================================================================
+  // pages attach-file
+  // =========================================================================
+  describe("pages attach-file", () => {
+    it("calls attachFileToPage() and prints page info", async () => {
+      await runCmd(mockClient, ["pages", "attach-file", "page-id-1", "/tmp/test.pdf"]);
+      expect(mockClient.attachFileToPage).toHaveBeenCalledWith(
+        "page-id-1",
+        "/tmp/test.pdf",
+        { caption: undefined },
+      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Test Page"));
+    });
+
+    it("passes caption to attachFileToPage when --caption is given", async () => {
+      await runCmd(mockClient, [
+        "pages", "attach-file", "page-id-1", "/tmp/test.pdf", "--caption", "My File",
+      ]);
+      expect(mockClient.attachFileToPage).toHaveBeenCalledWith(
+        "page-id-1",
+        "/tmp/test.pdf",
+        { caption: "My File" },
+      );
+    });
+
+    it("outputs JSON when --json flag is given", async () => {
+      await runCmd(mockClient, ["--json", "pages", "attach-file", "page-id-1", "/tmp/test.pdf"]);
+      const output = consoleLogSpy.mock.calls[0][0] as string;
+      const parsed = JSON.parse(output);
+      expect(parsed.id).toBe("page-id-1");
+    });
+
+    it("prints error and exits when attachFileToPage() throws", async () => {
+      (mockClient.attachFileToPage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("Upload failed"),
+      );
+      await runCmd(mockClient, ["pages", "attach-file", "page-id-1", "/tmp/test.pdf"]);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Upload failed"));
+      expect(processExitSpy).toHaveBeenCalledWith(1);
     });
   });
 });

@@ -20,7 +20,10 @@ import type {
   NotionComment,
   NotionUser,
   AuthInfo,
+  FileUploadResult,
+  AttachFileArgs,
 } from "./types.js";
+import { uploadFileToNotion, buildFileBlock } from "./file-upload.js";
 
 function extractTitle(page: Record<string, unknown>): string {
   const props = page.properties as Record<string, any> | undefined;
@@ -48,6 +51,8 @@ function pageToResult(page: Record<string, any>): PageResult {
 
 export class NotyClient implements NotionClientInterface {
   private client: Client;
+  /** Integration token (set only when using NOTION_TOKEN, not token_v2). */
+  private integrationToken: string | undefined;
 
   constructor(opts: NotyClientOptions) {
     if (!opts.token && !opts.tokenV2) {
@@ -64,6 +69,7 @@ export class NotyClient implements NotionClientInterface {
         },
       });
     } else {
+      this.integrationToken = opts.token;
       this.client = new Client({ auth: opts.token });
     }
   }
@@ -472,6 +478,39 @@ export class NotyClient implements NotionClientInterface {
       workspaceName: res.bot?.workspace_name || "",
       workspaceId: res.bot?.owner?.workspace ? "true" : res.id,
     };
+  }
+
+  async uploadFile(filePath: string): Promise<FileUploadResult> {
+    if (!this.integrationToken) {
+      throw new Error(
+        "uploadFile requires an integration token (NOTION_TOKEN). " +
+        "File upload is not supported with token_v2 (browser cookie).",
+      );
+    }
+    return uploadFileToNotion(filePath, { token: this.integrationToken });
+  }
+
+  async attachFileToPage(
+    pageIdOrUrl: string,
+    filePath: string,
+    args?: AttachFileArgs,
+  ): Promise<PageResult> {
+    const upload = await this.uploadFile(filePath);
+
+    const pageId = extractNotionId(pageIdOrUrl);
+    const fileBlock = buildFileBlock(upload.id, args?.caption);
+
+    await withRetry(() =>
+      this.client.blocks.children.append({
+        block_id: pageId,
+        children: [fileBlock as any],
+      }),
+    );
+
+    const page = await withRetry(() =>
+      this.client.pages.retrieve({ page_id: pageId }),
+    );
+    return pageToResult(page as any);
   }
 }
 
