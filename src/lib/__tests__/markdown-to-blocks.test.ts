@@ -249,7 +249,8 @@ console.log("hello");
 | --- | --- |
 | Alice | 30 |`;
     const blocks = markdownToBlocks(md);
-    const children = blocks[0].children as any[];
+    // Notion API 仕様: table_row は table プロパティ内の children に入る
+    const children = (blocks[0].table as any).children as any[];
     // ヘッダー行 + データ行 = 2行
     expect(children).toHaveLength(2);
     const headerRow = children[0].table_row;
@@ -266,7 +267,8 @@ console.log("hello");
 | 1 | 2 |
 | 3 | 4 |`;
     const blocks = markdownToBlocks(md);
-    const children = blocks[0].children as any[];
+    // Notion API 仕様: table_row は table プロパティ内の children に入る
+    const children = (blocks[0].table as any).children as any[];
     // ヘッダー行 + データ2行 = 3行（区切り行は含まない）
     expect(children).toHaveLength(3);
   });
