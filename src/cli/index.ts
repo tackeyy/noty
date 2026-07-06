@@ -2,6 +2,8 @@
 import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createClientFromEnv } from "../lib/client.js";
 import type { NotionClientInterface } from "../lib/notion-client-interface.js";
 import { readStdin } from "./stdin.js";
@@ -37,13 +39,17 @@ function jsonOutput(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
+const pkg = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8"),
+) as { version: string };
+
 export function createProgram(injectedClient?: NotionClientInterface): Command {
   const program = new Command();
 
   program
     .name("noty")
     .description("Notion CLI tool")
-    .version("1.1.0")
+    .version(pkg.version)
     .option("--json", "Output in JSON format")
     .option("--plain", "Output in TSV format");
 
