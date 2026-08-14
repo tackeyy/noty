@@ -94,9 +94,18 @@ export class NotyClient implements NotionClientInterface {
       baseParams.sort = opts.sort;
     }
 
+    // レートリミット保護: 100 件/ページ × 200 = 最大 20,000 件で打ち切る
+    const MAX_PAGES = 200;
     const items: any[] = [];
     let cursor: string | undefined;
+    let pageCount = 0;
     do {
+      if (++pageCount > MAX_PAGES) {
+        console.error(
+          `[noty] --all: reached ${MAX_PAGES * 100} results limit, stopping.`,
+        );
+        break;
+      }
       const params = cursor ? { ...baseParams, start_cursor: cursor } : baseParams;
       const res = await withRetry(() => this.client.search(params as any));
       items.push(...res.results);

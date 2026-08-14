@@ -122,6 +122,49 @@ describe("NotyClient", () => {
       );
     });
 
+    it("all: true で has_more=true かつ next_cursor=null でもループが終了する", async () => {
+      mockClient.search.mockResolvedValueOnce({
+        results: [
+          {
+            id: "p1",
+            object: "page",
+            url: "https://notion.so/p1",
+            last_edited_time: "2026-01-02T00:00:00.000Z",
+            parent: { type: "workspace", workspace: true },
+            properties: {
+              Name: { type: "title", title: [{ plain_text: "Page 1" }] },
+            },
+          },
+        ],
+        has_more: true,
+        next_cursor: null,
+      });
+      const results = await client.search("", { all: true });
+      expect(results).toHaveLength(1);
+      expect(mockClient.search).toHaveBeenCalledTimes(1);
+    });
+
+    it("database の parent 情報も付与される", async () => {
+      mockClient.search.mockResolvedValueOnce({
+        results: [
+          {
+            id: "db-1",
+            object: "database",
+            url: "https://notion.so/db-1",
+            last_edited_time: "2026-01-02T00:00:00.000Z",
+            parent: { type: "page_id", page_id: "parent-page" },
+            title: [{ plain_text: "Test DB" }],
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+      const results = await client.search("", { all: true });
+      expect(results[0].type).toBe("database");
+      expect(results[0].parentType).toBe("page_id");
+      expect(results[0].parentId).toBe("parent-page");
+    });
+
     it("all: true では workspace parent を workspace として返す", async () => {
       mockClient.search.mockResolvedValueOnce({
         results: [

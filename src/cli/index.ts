@@ -247,7 +247,7 @@ export function createProgram(injectedClient?: NotionClientInterface): Command {
     .option("--filter <type>", "Filter by type (page or database)")
     .option("--limit <n>", "Maximum results", "10")
     .option("--sort <direction>", "Sort by last_edited_time (ascending or descending)")
-    .option("--all", "Fetch all results with cursor pagination (integration がアクセスできる全ページ列挙)")
+    .option("--all", "Fetch all results with cursor pagination (--limit は無視される。integration がアクセスできる全ページ列挙)")
     .action(async (query, opts) => {
       try {
         const client = getClient();
