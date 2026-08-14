@@ -17,7 +17,12 @@ import type {
 export interface NotionClientInterface {
   search(
     query: string,
-    opts?: { filter?: "page" | "database"; limit?: number; sort?: SearchSort },
+    opts?: {
+      filter?: "page" | "database";
+      limit?: number;
+      sort?: SearchSort;
+      all?: boolean;
+    },
   ): Promise<SearchResult[]>;
   getPage(idOrUrl: string): Promise<string>;
   getPageMetadata(idOrUrl: string): Promise<PageResult>;

@@ -57,6 +57,92 @@ describe("NotyClient", () => {
         }),
       );
     });
+
+    it("includes parent info in results", async () => {
+      mockClient.search.mockResolvedValueOnce({
+        results: [
+          {
+            id: "page-id-1",
+            object: "page",
+            url: "https://notion.so/Page-1",
+            last_edited_time: "2026-01-02T00:00:00.000Z",
+            parent: { type: "page_id", page_id: "parent-page-id" },
+            properties: {
+              Name: { type: "title", title: [{ plain_text: "Child Page" }] },
+            },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+      const results = await client.search("test");
+      expect(results[0].parentType).toBe("page_id");
+      expect(results[0].parentId).toBe("parent-page-id");
+    });
+
+    it("all: true で next_cursor を辿って全件取得する", async () => {
+      const makeItem = (id: string) => ({
+        id,
+        object: "page",
+        url: `https://notion.so/${id}`,
+        last_edited_time: "2026-01-02T00:00:00.000Z",
+        parent: { type: "workspace", workspace: true },
+        properties: {
+          Name: { type: "title", title: [{ plain_text: `Page ${id}` }] },
+        },
+      });
+      mockClient.search
+        .mockResolvedValueOnce({
+          results: [makeItem("p1"), makeItem("p2")],
+          has_more: true,
+          next_cursor: "cursor-1",
+        })
+        .mockResolvedValueOnce({
+          results: [makeItem("p3")],
+          has_more: false,
+          next_cursor: null,
+        });
+
+      const results = await client.search("", { all: true });
+
+      expect(results.map((r) => r.id)).toEqual(["p1", "p2", "p3"]);
+      expect(mockClient.search).toHaveBeenCalledTimes(2);
+      // 1回目: cursor なし・page_size 100
+      expect(mockClient.search).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ query: "", page_size: 100 }),
+      );
+      expect(
+        (mockClient.search as ReturnType<typeof vi.fn>).mock.calls[0][0],
+      ).not.toHaveProperty("start_cursor");
+      // 2回目: next_cursor を引き継ぐ
+      expect(mockClient.search).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ start_cursor: "cursor-1", page_size: 100 }),
+      );
+    });
+
+    it("all: true では workspace parent を workspace として返す", async () => {
+      mockClient.search.mockResolvedValueOnce({
+        results: [
+          {
+            id: "top-1",
+            object: "page",
+            url: "https://notion.so/top-1",
+            last_edited_time: "2026-01-02T00:00:00.000Z",
+            parent: { type: "workspace", workspace: true },
+            properties: {
+              Name: { type: "title", title: [{ plain_text: "Top Page" }] },
+            },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+      const results = await client.search("", { all: true });
+      expect(results[0].parentType).toBe("workspace");
+      expect(results[0].parentId).toBeUndefined();
+    });
   });
 
   describe("getPage", () => {
