@@ -274,6 +274,44 @@ describe("CLI commands", () => {
       const callArg = (mockClient.search as ReturnType<typeof vi.fn>).mock.calls[0][1];
       expect(callArg.sort).toBeUndefined();
     });
+
+    it("--all を search() の all オプションとして渡す", async () => {
+      await runCmd(mockClient, ["search", "hello", "--all"]);
+
+      expect(mockClient.search).toHaveBeenCalledWith(
+        "hello",
+        expect.objectContaining({ all: true }),
+      );
+    });
+
+    it("query 省略 + --all で空クエリの全件列挙になる", async () => {
+      await runCmd(mockClient, ["search", "--all"]);
+
+      expect(mockClient.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ all: true }),
+      );
+    });
+
+    it("plain 出力に parent 情報の列を含む", async () => {
+      (mockClient.search as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        {
+          id: "page-id-1",
+          title: "Test Page",
+          type: "page",
+          url: "https://notion.so/Test-Page",
+          lastEditedTime: "2026-01-02T00:00:00.000Z",
+          parentType: "page_id",
+          parentId: "parent-1",
+        },
+      ]);
+      await runCmd(mockClient, ["search", "hello", "--plain"]);
+
+      const lines = consoleLogSpy.mock.calls.map((c) => c.join(" "));
+      expect(
+        lines.some((l) => l.includes("page_id") && l.includes("parent-1")),
+      ).toBe(true);
+    });
   });
 
   describe("pages get", () => {

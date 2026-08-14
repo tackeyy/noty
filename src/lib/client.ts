@@ -76,27 +76,53 @@ export class NotyClient implements NotionClientInterface {
 
   async search(
     query: string,
-    opts?: { filter?: "page" | "database"; limit?: number; sort?: SearchSort },
+    opts?: {
+      filter?: "page" | "database";
+      limit?: number;
+      sort?: SearchSort;
+      all?: boolean;
+    },
   ): Promise<SearchResult[]> {
-    const params: Record<string, unknown> = {
+    const baseParams: Record<string, unknown> = {
       query,
-      page_size: opts?.limit ?? 10,
+      page_size: opts?.all ? 100 : (opts?.limit ?? 10),
     };
     if (opts?.filter) {
-      params.filter = { property: "object", value: opts.filter };
+      baseParams.filter = { property: "object", value: opts.filter };
     }
     if (opts?.sort) {
-      params.sort = opts.sort;
+      baseParams.sort = opts.sort;
     }
 
-    const res = await withRetry(() => this.client.search(params as any));
+    // レートリミット保護: 100 件/ページ × 200 = 最大 20,000 件で打ち切る
+    const MAX_PAGES = 200;
+    const items: any[] = [];
+    let cursor: string | undefined;
+    let pageCount = 0;
+    do {
+      if (++pageCount > MAX_PAGES) {
+        console.error(
+          `[noty] --all: reached ${MAX_PAGES * 100} results limit, stopping.`,
+        );
+        break;
+      }
+      const params = cursor ? { ...baseParams, start_cursor: cursor } : baseParams;
+      const res = await withRetry(() => this.client.search(params as any));
+      items.push(...res.results);
+      cursor = opts?.all && res.has_more ? (res.next_cursor ?? undefined) : undefined;
+    } while (cursor);
 
-    return res.results.map((item: any) => ({
+    return items.map((item: any) => ({
       id: item.id,
       title: extractTitle(item) || (item.title?.[0]?.plain_text ?? ""),
       type: item.object === "database" ? "database" : "page",
       url: item.url || "",
       lastEditedTime: item.last_edited_time || "",
+      parentType: item.parent?.type,
+      parentId:
+        item.parent && item.parent.type !== "workspace"
+          ? (item.parent[item.parent.type] ?? undefined)
+          : undefined,
     }));
   }
 

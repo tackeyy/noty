@@ -9,6 +9,10 @@ export interface SearchResult {
   type: "page" | "database";
   url: string;
   lastEditedTime: string;
+  /** 親の種別 */
+  parentType?: "workspace" | "page_id" | "database_id" | "block_id";
+  /** 親の ID (workspace 直下の場合は undefined) */
+  parentId?: string;
 }
 
 export interface PageResult {

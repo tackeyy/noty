@@ -88,10 +88,13 @@ noty auth set-cookie <token_v2>        # Save browser session token (no integrat
 noty auth login                        # Authenticate via Notion OAuth (requires integration)
 noty auth status                       # Show current authentication status
 noty auth logout                       # Remove saved OAuth/token_v2 credential
-noty search <query>                    # Search pages and databases
+noty search [query]                    # Search pages and databases
   --filter <type>                      #   Filter by type (page or database)
   --limit <n>                          #   Maximum results (default: 10)
   --sort <direction>                   #   Sort by last_edited_time (ascending or descending)
+  --all                                #   Fetch all results with cursor pagination
+                                       #   (query 省略で integration がアクセス可能な全ページ・DB を列挙。
+                                       #    --limit は無視。安全上限 20,000 件で打ち切り)
 noty pages get <id>                    # Get page content as Markdown
 noty pages create                      # Create a new page
   --parent <id>                        #   Parent page or database ID (required)

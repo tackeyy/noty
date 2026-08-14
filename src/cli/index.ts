@@ -242,11 +242,12 @@ export function createProgram(injectedClient?: NotionClientInterface): Command {
 
   // --- search ---
   program
-    .command("search <query>")
-    .description("Search Notion pages and databases")
+    .command("search [query]")
+    .description("Search Notion pages and databases (omit query with --all to list everything accessible)")
     .option("--filter <type>", "Filter by type (page or database)")
     .option("--limit <n>", "Maximum results", "10")
     .option("--sort <direction>", "Sort by last_edited_time (ascending or descending)")
+    .option("--all", "Fetch all results with cursor pagination (--limit は無視される。integration がアクセスできる全ページ列挙)")
     .action(async (query, opts) => {
       try {
         const client = getClient();
@@ -254,17 +255,20 @@ export function createProgram(injectedClient?: NotionClientInterface): Command {
         const sort = opts.sort
           ? { direction: opts.sort as "ascending" | "descending", timestamp: "last_edited_time" as const }
           : undefined;
-        const results = await client.search(query, {
+        const results = await client.search(query ?? "", {
           filter: opts.filter,
           limit: parseInt(opts.limit, 10),
           sort,
+          all: opts.all === true,
         });
 
         if (mode === "json") {
           jsonOutput(results);
         } else if (mode === "plain") {
           for (const r of results) {
-            console.log(`${r.id}\t${r.type}\t${r.title}\t${r.url}`);
+            console.log(
+              `${r.id}\t${r.type}\t${r.title}\t${r.url}\t${r.parentType ?? ""}\t${r.parentId ?? ""}`,
+            );
           }
         } else {
           if (results.length === 0) {
