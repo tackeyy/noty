@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { markdownToBlocks } from "../markdown-to-blocks.js";
+import {
+  markdownToBlocks,
+  normalizeNotionCodeLanguage,
+  isLikelyValidLinkUrl,
+  splitLongRichText,
+} from "../markdown-to-blocks.js";
 
 describe("markdownToBlocks", () => {
   it("converts heading 1", () => {
@@ -41,6 +46,44 @@ describe("markdownToBlocks", () => {
     const code = blocks[0].code as any;
     expect(code.language).toBe("typescript");
     expect(code.rich_text[0].text.content).toBe("const x = 1;");
+  });
+
+  it("maps a non-Notion code fence language to a valid enum value (text -> plain text)", () => {
+    // Notion's code block `language` is a fixed enum; "text" is not a member
+    // of it (the API rejects page creation otherwise).
+    const blocks = markdownToBlocks("```text\nhello\n```");
+    const code = blocks[0].code as any;
+    expect(code.language).toBe("plain text");
+  });
+
+  it("normalizeNotionCodeLanguage maps common aliases and falls back for unknowns", () => {
+    expect(normalizeNotionCodeLanguage("text")).toBe("plain text");
+    expect(normalizeNotionCodeLanguage("sh")).toBe("shell");
+    expect(normalizeNotionCodeLanguage("TypeScript")).toBe("typescript");
+    expect(normalizeNotionCodeLanguage("bash")).toBe("bash");
+    expect(normalizeNotionCodeLanguage("not-a-real-language")).toBe("plain text");
+  });
+
+  it("splits a code block longer than 2000 chars into multiple rich_text items", () => {
+    // Notion rejects any single rich_text.text.content over 2000 chars.
+    const longLine = "x".repeat(2500);
+    const blocks = markdownToBlocks("```\n" + longLine + "\n```");
+    const code = blocks[0].code as any;
+    expect(code.rich_text.length).toBeGreaterThan(1);
+    expect(code.rich_text.every((rt: any) => rt.text.content.length <= 2000)).toBe(true);
+    expect(code.rich_text.map((rt: any) => rt.text.content).join("")).toBe(longLine);
+  });
+
+  it("splitLongRichText leaves short items untouched and chunks long ones", () => {
+    const short = { type: "text" as const, text: { content: "hi" }, annotations: {} as any };
+    expect(splitLongRichText([short])).toEqual([short]);
+
+    const longContent = "a".repeat(4500);
+    const long = { type: "text" as const, text: { content: longContent }, annotations: {} as any };
+    const chunks = splitLongRichText([long]);
+    expect(chunks).toHaveLength(3);
+    expect(chunks.every((c) => c.text.content.length <= 2000)).toBe(true);
+    expect(chunks.map((c) => c.text.content).join("")).toBe(longContent);
   });
 
   it("converts divider", () => {
@@ -102,6 +145,23 @@ describe("markdownToBlocks", () => {
     const linkPart = richText.find((rt: any) => rt.text.link);
     expect(linkPart).toBeDefined();
     expect(linkPart.text.link.url).toBe("https://example.com");
+  });
+
+  it("renders [text](url) as plain text when url is not an actual URL (e.g. a template placeholder)", () => {
+    // Notion rejects pages.create/update with "Invalid URL for link." if the
+    // url isn't a real absolute URL.
+    const blocks = markdownToBlocks("[元のSlackスレッド]({SlackスレッドURL})");
+    const richText = (blocks[0].paragraph as any).rich_text;
+    expect(richText.some((rt: any) => rt.text.link)).toBe(false);
+    expect(richText[0].text.content).toBe("元のSlackスレッド（{SlackスレッドURL}）");
+  });
+
+  it("isLikelyValidLinkUrl accepts http(s)/mailto and rejects placeholders", () => {
+    expect(isLikelyValidLinkUrl("https://example.com")).toBe(true);
+    expect(isLikelyValidLinkUrl("http://example.com")).toBe(true);
+    expect(isLikelyValidLinkUrl("mailto:a@example.com")).toBe(true);
+    expect(isLikelyValidLinkUrl("{SlackスレッドURL}")).toBe(false);
+    expect(isLikelyValidLinkUrl("see below")).toBe(false);
   });
 
   it("handles strikethrough inline formatting", () => {

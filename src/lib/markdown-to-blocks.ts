@@ -2,6 +2,66 @@
  * Parse Markdown into Notion Block objects (line-based parser).
  */
 
+/**
+ * Notion's code block `language` property only accepts a fixed enum
+ * (see the Notion API error for the full list). Common fence tags that are
+ * NOT in that enum map to the closest valid value; anything unrecognized
+ * falls back to "plain text" so page creation never fails on this field.
+ */
+const NOTION_CODE_LANGUAGE_ALIASES: Record<string, string> = {
+  text: "plain text",
+  txt: "plain text",
+  plaintext: "plain text",
+  sh: "shell",
+  zsh: "shell",
+  js: "javascript",
+  ts: "typescript",
+  jsx: "javascript",
+  tsx: "typescript",
+  py: "python",
+  yml: "yaml",
+  md: "markdown",
+  "objective-c": "objective-c",
+  cpp: "c++",
+  cs: "c#",
+};
+
+const NOTION_VALID_CODE_LANGUAGES = new Set([
+  "abap", "abc", "agda", "arduino", "ascii art", "assembly", "bash", "basic",
+  "bnf", "c", "c#", "c++", "clojure", "coffeescript", "coq", "css", "dart",
+  "dhall", "diff", "docker", "ebnf", "elixir", "elm", "erlang", "f#", "flow",
+  "fortran", "gherkin", "glsl", "go", "graphql", "groovy", "haskell", "hcl",
+  "html", "idris", "java", "javascript", "json", "julia", "kotlin", "latex",
+  "less", "lisp", "livescript", "llvm ir", "lua", "makefile", "markdown",
+  "markup", "matlab", "mathematica", "mermaid", "nix", "notion formula",
+  "objective-c", "ocaml", "pascal", "perl", "php", "plain text", "powershell",
+  "prolog", "protobuf", "purescript", "python", "r", "racket", "reason",
+  "ruby", "rust", "sass", "scala", "scheme", "scss", "shell", "smalltalk",
+  "solidity", "sql", "swift", "toml", "typescript", "vb.net", "verilog",
+  "vhdl", "visual basic", "webassembly", "xml", "yaml", "java/c/c++/c#",
+]);
+
+/**
+ * Notion rejects pages.create/update with "Invalid URL for link." if a rich_text
+ * link's `url` isn't an actual absolute URL. Markdown docs sometimes use the
+ * `[text](url)` syntax with a non-URL placeholder (e.g. a template variable like
+ * `[thread](${threadUrl})` left unexpanded, or `(see below)`), which must not be
+ * sent to Notion as a link.
+ */
+export function isLikelyValidLinkUrl(url: string): boolean {
+  return /^(https?:\/\/|mailto:)/i.test(url.trim());
+}
+
+/** Map an arbitrary fenced-code-block language tag to a Notion-valid one. */
+export function normalizeNotionCodeLanguage(lang: string): string {
+  const normalized = lang.trim().toLowerCase();
+  if (NOTION_VALID_CODE_LANGUAGES.has(normalized)) return normalized;
+  if (NOTION_CODE_LANGUAGE_ALIASES[normalized]) {
+    return NOTION_CODE_LANGUAGE_ALIASES[normalized];
+  }
+  return "plain text";
+}
+
 type RichTextObject = {
   type: "text";
   text: { content: string; link?: { url: string } | null };
@@ -67,12 +127,22 @@ function parseInlineFormatting(text: string): RichTextObject[] {
         annotations: { ...DEFAULT_ANNOTATIONS },
       });
     } else if (match[2]) {
-      // Link: [text](url)
-      results.push({
-        type: "text",
-        text: { content: match[3], link: { url: match[4] } },
-        annotations: { ...DEFAULT_ANNOTATIONS },
-      });
+      // Link: [text](url) — only treat as a real Notion link if the url
+      // actually looks like one; otherwise render as plain "text（url）"
+      // so Notion doesn't reject the request with "Invalid URL for link."
+      if (isLikelyValidLinkUrl(match[4])) {
+        results.push({
+          type: "text",
+          text: { content: match[3], link: { url: match[4] } },
+          annotations: { ...DEFAULT_ANNOTATIONS },
+        });
+      } else {
+        results.push({
+          type: "text",
+          text: { content: `${match[3]}（${match[4]}）` },
+          annotations: { ...DEFAULT_ANNOTATIONS },
+        });
+      }
     } else if (match[5]) {
       // Code: `text`
       results.push({
@@ -137,8 +207,39 @@ function parseInlineFormatting(text: string): RichTextObject[] {
   return results;
 }
 
+/** Notion の rich_text.text.content は 1 要素あたり最大 2000 文字 */
+const NOTION_RICH_TEXT_MAX_LENGTH = 2000;
+
+/**
+ * Notion は rich_text 1要素の `text.content` を 2000 文字までしか受け付けない
+ * (超えると pages.create/update が validation_error で丸ごと失敗する)。長い
+ * 要素（長い code block や長い段落など）を複数の rich_text 要素に分割する。
+ */
+export function splitLongRichText(
+  richText: RichTextObject[],
+): RichTextObject[] {
+  const result: RichTextObject[] = [];
+  for (const item of richText) {
+    const content = item.text.content;
+    if (content.length <= NOTION_RICH_TEXT_MAX_LENGTH) {
+      result.push(item);
+      continue;
+    }
+    for (let i = 0; i < content.length; i += NOTION_RICH_TEXT_MAX_LENGTH) {
+      result.push({
+        ...item,
+        text: {
+          ...item.text,
+          content: content.slice(i, i + NOTION_RICH_TEXT_MAX_LENGTH),
+        },
+      });
+    }
+  }
+  return result;
+}
+
 function makeRichText(text: string): RichTextObject[] {
-  return parseInlineFormatting(text);
+  return splitLongRichText(parseInlineFormatting(text));
 }
 
 /** セパレーター行（| --- | :---: | など）かどうか判定 */
@@ -217,7 +318,7 @@ export function markdownToBlocks(markdown: string): NotionBlock[] {
     // Fenced code block
     const codeMatch = line.match(/^```(\w*)$/);
     if (codeMatch) {
-      const lang = codeMatch[1] || "plain text";
+      const lang = normalizeNotionCodeLanguage(codeMatch[1] || "plain text");
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].match(/^```$/)) {
@@ -229,13 +330,13 @@ export function markdownToBlocks(markdown: string): NotionBlock[] {
         object: "block",
         type: "code",
         code: {
-          rich_text: [
+          rich_text: splitLongRichText([
             {
               type: "text",
               text: { content: codeLines.join("\n") },
               annotations: { ...DEFAULT_ANNOTATIONS },
             },
-          ],
+          ]),
           language: lang,
         },
       });
